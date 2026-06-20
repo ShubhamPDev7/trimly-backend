@@ -43,13 +43,15 @@ public class AuthController {
             throw new IllegalArgumentException("Staff accounts must be created by a shop owner, not self-registered");
         }
 
-        if (userRepository.existsByEmail(request.email())) {
+        String normalizedEmail = request.email().trim().toLowerCase();
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new IllegalArgumentException("An account with this email already exists.");
         }
 
         User user = User.builder()
                 .name(request.name())
-                .email(request.email())
+                .email(normalizedEmail)
                 .phone(request.phone())
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .role(request.role())
@@ -66,11 +68,13 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
 
+        String normalizedEmail = request.email().trim().toLowerCase();
+
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.email(), request.password())
+                new UsernamePasswordAuthenticationToken(normalizedEmail, request.password())
         );
 
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new IllegalStateException("Authenticated user not found in database."));
 
         List<UUID> shopIds = shopStaffRepository.findByUserId(user.getId()).stream()
