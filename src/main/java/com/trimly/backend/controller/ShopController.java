@@ -116,7 +116,7 @@ public class ShopController {
             @Valid @RequestBody AddStaffRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
+        shopAccessService.verifyShopOwner(userDetails.getUser().getId(), shopId);
 
         User userToAdd = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new IllegalArgumentException(
