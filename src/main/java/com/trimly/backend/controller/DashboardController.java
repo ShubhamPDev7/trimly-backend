@@ -89,21 +89,34 @@ public class DashboardController {
         Map<UUID, Booking> bookingsById = bookingsInRange.stream()
                 .collect(Collectors.toMap(Booking::getId, b -> b, (a, b) -> a));
 
-        Map<String, List<Bill>> billsByCustomerLabel = bills.stream()
+        Map<String, List<Bill>> billsByCustomerKey = bills.stream()
                 .filter(bill -> bookingsById.containsKey(bill.getBookingId()))
-                .collect(Collectors.groupingBy(bill -> resolveCustomerLabel(bookingsById.get(bill.getBookingId()))));
+                .collect(Collectors.groupingBy(bill -> resolveCustomerKey(bookingsById.get(bill.getBookingId()))));
 
-        return billsByCustomerLabel.entrySet().stream()
+        return billsByCustomerKey.entrySet().stream()
                 .map(entry -> {
                     List<Bill> customerBills = entry.getValue();
                     BigDecimal totalSpent = customerBills.stream()
                             .map(Bill::getTotalAmount)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    return new DashboardSummaryResponse.TopCustomer(entry.getKey(), customerBills.size(), totalSpent);
+
+                    Booking sampleBooking = bookingsById.get(customerBills.get(0).getBookingId());
+                    String label = resolveCustomerLabel(sampleBooking);
+
+                    return new DashboardSummaryResponse.TopCustomer(label, customerBills.size(), totalSpent);
                 })
                 .sorted(Comparator.comparing(DashboardSummaryResponse.TopCustomer::totalSpent).reversed())
                 .limit(10)
                 .collect(Collectors.toList());
+    }
+
+
+    private String resolveCustomerKey(Booking booking) {
+        if (booking.getCustomerId() != null) {
+            return "customer:" + booking.getCustomerId();
+        }
+        String guestPhone = booking.getGuestPhone();
+        return guestPhone != null ? "guest:" + guestPhone : "guest-unknown:" + booking.getId();
     }
 
     private String resolveCustomerLabel(Booking booking) {
