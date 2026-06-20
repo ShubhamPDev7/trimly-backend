@@ -1,15 +1,16 @@
 package com.trimly.backend.controller;
 
+import com.trimly.backend.dto.bill.BillRequest;
+import com.trimly.backend.dto.bill.BillResponse;
 import com.trimly.backend.dto.booking.BookedServiceResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
-import com.trimly.backend.entity.Booking;
-import com.trimly.backend.entity.BookingServiceItem;
-import com.trimly.backend.entity.ServiceItem;
-import com.trimly.backend.entity.User;
+import com.trimly.backend.entity.*;
 import com.trimly.backend.enums.BookingStatus;
+import com.trimly.backend.enums.PaymentStatus;
 import com.trimly.backend.exception.ResourceNotFoundException;
+import com.trimly.backend.repository.BillRepository;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.BookingServiceItemRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
@@ -38,7 +39,7 @@ public class BookingController {
     private final BookingServiceItemRepository bookingServiceItemRepository;
     private final ServiceItemRepository serviceItemRepository;
     private final ShopAccessService shopAccessService;
-
+    private final BillRepository billRepository;
 
 
     @PostMapping
@@ -214,6 +215,61 @@ public class BookingController {
         );
 
         return toResponse(booking, bookingService, services);
+    }
+
+    @PostMapping("/{bookingId}/bill")
+    public ResponseEntity<BillResponse> createBill(
+            @PathVariable UUID shopId,
+            @PathVariable UUID bookingId,
+            @Valid @RequestBody BillRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+            ) {
+        shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found."));
+
+        if (!booking.getShopId().equals(shopId)) {
+            throw new ResourceNotFoundException("Booking not found.");
+        }
+
+        if (booking.getStatus() != BookingStatus.COMPLETED) {
+            throw new IllegalArgumentException("Only completed bookings can be billed.");
+        }
+
+        if (billRepository.findByBookingId(bookingId).isPresent()) {
+            throw new IllegalArgumentException("This booking has already been billed.");
+        }
+
+        List<BookingServiceItem> bookingServices = bookingServiceItemRepository.findByBookingId(bookingId);
+
+        BigDecimal total = bookingServices.stream()
+                .map(BookingServiceItem::getPriceAtBooking)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Bill bill = Bill.builder()
+                .shopId(shopId)
+                .bookingId(bookingId)
+                .totalAmount(total)
+                .paymentMode(request.paymentMode())
+                .paymentStatus(PaymentStatus.PAID)
+                .build();
+
+        Bill savedBill = billRepository.save(bill);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(toBillResponse(savedBill));
+    }
+
+    private BillResponse toBillResponse(Bill bill) {
+        return new BillResponse(
+                bill.getId(),
+                bill.getShopId(),
+                bill.getBookingId(),
+                bill.getTotalAmount(),
+                bill.getPaymentMode(),
+                bill.getPaymentStatus(),
+                bill.getCreatedAt()
+        );
     }
 
 }
