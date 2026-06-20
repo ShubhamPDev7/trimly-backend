@@ -1,11 +1,15 @@
 package com.trimly.backend.controller;
 
 import com.trimly.backend.dto.dashboard.DashboardSummaryResponse;
+import com.trimly.backend.dto.dashboard.StaffPerformanceResponse;
 import com.trimly.backend.entity.Bill;
 import com.trimly.backend.entity.Booking;
+import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
+import com.trimly.backend.enums.BookingStatus;
 import com.trimly.backend.repository.BillRepository;
 import com.trimly.backend.repository.BookingRepository;
+import com.trimly.backend.repository.ShopStaffRepository;
 import com.trimly.backend.repository.UserRepository;
 import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.ShopAccessService;
@@ -34,6 +38,7 @@ public class DashboardController {
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final ShopAccessService shopAccessService;
+    private final ShopStaffRepository shopStaffRepository;
 
     @GetMapping("/summary")
     public ResponseEntity<DashboardSummaryResponse> getSummary(
@@ -108,6 +113,59 @@ public class DashboardController {
                     .orElse("Unknown Customer");
         }
         return booking.getGuestName() != null ? booking.getGuestName() : "Guest";
+    }
+
+    @GetMapping("/staff-performance")
+    public ResponseEntity<List<StaffPerformanceResponse>> getStaffPerformance(
+            @PathVariable UUID shopId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
+
+        Instant start = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant end = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+        List<Booking> completedBookings = bookingRepository.findByShopId(shopId).stream()
+                .filter(b -> b.getStatus() == BookingStatus.COMPLETED)
+                .filter(b -> !b.getBookingDate().isBefore(startDate) && !b.getBookingDate().isAfter(endDate))
+                .collect(Collectors.toList());
+
+        List<Bill> bills = billRepository.findByShopIdAndCreatedAtBetween(shopId, start, end);
+        Map<UUID, BigDecimal> revenueByBookingId = bills.stream()
+                .collect(Collectors.toMap(Bill::getBookingId, Bill::getTotalAmount, (a, b) -> a));
+
+        Map<UUID, List<Booking>> bookingsByStaffId = completedBookings.stream()
+                .collect(Collectors.groupingBy(Booking::getStaffId));
+
+        List<ShopStaff> staffLinks = shopStaffRepository.findByShopId(shopId);
+        Map<UUID, User> usersById = userRepository.findAllById(
+                staffLinks.stream().map(ShopStaff::getUserId).collect(Collectors.toList())
+        ).stream().collect(Collectors.toMap(User::getId, u -> u));
+
+        List<StaffPerformanceResponse> response = staffLinks.stream()
+                .map(link -> {
+                    UUID staffId = link.getUserId();
+                    List<Booking> staffBookings = bookingsByStaffId.getOrDefault(staffId, List.of());
+
+                    BigDecimal staffRevenue = staffBookings.stream()
+                            .map(b -> revenueByBookingId.getOrDefault(b.getId(), BigDecimal.ZERO))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    User user = usersById.get(staffId);
+
+                    return new StaffPerformanceResponse(
+                            staffId,
+                            user != null ? user.getName() : "Unknown",
+                            staffBookings.size(),
+                            staffRevenue
+                    );
+                })
+                .sorted(Comparator.comparing(StaffPerformanceResponse::totalRevenue).reversed())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(response);
     }
 
 }
