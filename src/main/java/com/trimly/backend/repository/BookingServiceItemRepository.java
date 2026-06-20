@@ -10,4 +10,6 @@ public interface BookingServiceItemRepository extends JpaRepository<BookingServi
 
     List<BookingServiceItem> findByBookingId(UUID bookingId);
 
+    List<BookingServiceItem> findByBookingIdIn(List<UUID> bookingIds);
+
 }

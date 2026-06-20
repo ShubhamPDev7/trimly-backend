@@ -162,7 +162,7 @@ public class BookingController {
             @PathVariable UUID bookingId,
             @Valid @RequestBody BookingStatusUpdateRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails
-            ) {
+    ) {
 
         shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
 
@@ -195,7 +195,7 @@ public class BookingController {
             @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false) BookingStatus status,
             @AuthenticationPrincipal CustomUserDetails userDetails
-            ) {
+    ) {
         shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
 
         List<Booking> bookings = bookingRepository.findByShopId(shopId);
@@ -205,16 +205,36 @@ public class BookingController {
                 .filter(b -> status == null || b.getStatus() == status)
                 .collect(Collectors.toList());
 
-        return ResponseEntity.ok(filtered.stream().map(this::toResponseWithServices).collect(Collectors.toList()));
+        return ResponseEntity.ok(toResponseList(filtered));
     }
 
-    private BookingResponse toResponseWithServices(Booking booking) {
-        List<BookingServiceItem> bookingService = bookingServiceItemRepository.findByBookingId(booking.getId());
-        List<ServiceItem> services = serviceItemRepository.findAllById(
-                bookingService.stream().map(BookingServiceItem::getServiceId).collect(Collectors.toList())
-        );
+    private List<BookingResponse> toResponseList(List<Booking> bookings) {
+        if (bookings.isEmpty()) return List.of();
 
-        return toResponse(booking, bookingService, services);
+
+        List<UUID> bookingIds = bookings.stream().map(Booking::getId).collect(Collectors.toList());
+        List<BookingServiceItem> allItems = bookingServiceItemRepository.findByBookingIdIn(bookingIds);
+
+
+        List<UUID> serviceIds = allItems.stream().map(BookingServiceItem::getServiceId).collect(Collectors.toList());
+        List<ServiceItem> allServices = serviceItemRepository.findAllById(serviceIds);
+
+
+        Map<UUID, List<BookingServiceItem>> itemsByBookingId = allItems.stream()
+                .collect(Collectors.groupingBy(BookingServiceItem::getBookingId));
+        Map<UUID, ServiceItem> servicesById = allServices.stream()
+                .collect(Collectors.toMap(ServiceItem::getId, s -> s));
+
+
+        return bookings.stream()
+                .map(booking -> {
+                    List<BookingServiceItem> items = itemsByBookingId.getOrDefault(booking.getId(), List.of());
+                    List<ServiceItem> services = items.stream()
+                            .map(i -> servicesById.get(i.getServiceId()))
+                            .collect(Collectors.toList());
+                    return toResponse(booking, items, services);
+                })
+                .collect(Collectors.toList());
     }
 
     @PostMapping("/{bookingId}/bill")
@@ -223,7 +243,7 @@ public class BookingController {
             @PathVariable UUID bookingId,
             @Valid @RequestBody BillRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails
-            ) {
+    ) {
         shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
 
         Booking booking = bookingRepository.findById(bookingId)
