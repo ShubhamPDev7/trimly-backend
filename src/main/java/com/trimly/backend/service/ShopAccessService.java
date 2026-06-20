@@ -13,10 +13,13 @@ public class ShopAccessService {
 
     private final ShopStaffRepository shopStaffRepository;
 
-    public void verifyShopAccess(UUID userId, UUID shopId) {
-        boolean hasAccess = shopStaffRepository.findByShopIdAndUserId(shopId, userId).isPresent();
+    public boolean hasShopAccess(UUID userId, UUID shopId) {
+        return shopStaffRepository.findByShopIdAndUserId(shopId, userId).isPresent();
+    }
 
-        if (!hasAccess) {
+    public void verifyShopAccess(UUID userId, UUID shopId) {
+
+        if (!hasShopAccess(userId, shopId)) {
             throw new ShopAccessDeniedException("You do not have access to this shop");
         }
     }
