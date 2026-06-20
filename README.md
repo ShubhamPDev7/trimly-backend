@@ -79,50 +79,50 @@ Naming note: `ServiceItem`/`BookingServiceItem` are named to avoid colliding wit
 - All 7 entities + 5 enums mapped from the ERD
 - Repositories for every entity, with shop-scoped query methods
 - Spring Security + JWT:
-    - `CustomUserDetails` / `CustomUserDetailsService` — adapts `User` to Spring Security
-    - `JwtUtil` — generates/validates tokens; embeds `userId`, `role`, and `shopIds` (list) as claims
-    - `JwtAuthFilter` — authenticates each request from its Bearer token
-    - `SecurityConfig` — stateless sessions, public `/api/auth/**`, everything else requires auth
+  - `CustomUserDetails` / `CustomUserDetailsService` — adapts `User` to Spring Security
+  - `JwtUtil` — generates/validates tokens; embeds `userId`, `role`, and `shopIds` (list) as claims
+  - `JwtAuthFilter` — authenticates each request from its Bearer token
+  - `SecurityConfig` — stateless sessions, public `/api/auth/**`, everything else requires auth
 - `GlobalExceptionHandler` — consistent JSON error responses (400/401/403/404/500), no raw stack traces leak to clients
 - **Auth endpoints**: `POST /api/auth/register`, `POST /api/auth/login`
-    - Self-registration blocked for `STAFF` role (staff must be added by an owner)
-    - Same generic "Invalid email or password" message on bad email or bad password (prevents user enumeration)
+  - Self-registration blocked for `STAFF` role (staff must be added by an owner)
+  - Same generic "Invalid email or password" message on bad email or bad password (prevents user enumeration)
 
 ### Phase 2 — Shop & Services
 - `POST /api/shops` — create a shop; auto-enrolls the creator as `ShopStaff` ("Owner"); **re-issues a fresh JWT** with the new shop's ID included in `shopIds`
 - Any authenticated user can create a shop (platform-wide `Role` is not a hard gate — `ShopStaff` membership is the real per-shop permission source of truth)
 - `ShopAccessService.verifyShopAccess(userId, shopId)` — reusable tenant-isolation check, used by every shop-scoped write endpoint from here on
 - **ServiceItem CRUD**: `POST/GET/PUT/DELETE /api/shops/{shopId}/services`, with optional `?category=` filter
-    - Listing is open to any authenticated user (customers need to browse services); writes require shop access
-    - Update/delete double-check the service actually belongs to the `shopId` in the URL (not just that *a* service with that ID exists)
+  - Listing is open to any authenticated user (customers need to browse services); writes require shop access
+  - Update/delete double-check the service actually belongs to the `shopId` in the URL (not just that *a* service with that ID exists)
 
 ### Phase 3 — Booking
 - `POST /api/shops/{shopId}/bookings` — create a booking:
-    - If the requester is shop staff → guest booking (`guestName`/`guestPhone` required, `customerId` null)
-    - Otherwise → customer books for themselves (`customerId` = their own ID)
-    - Validates `staffId` actually belongs to the shop
-    - **Slot-conflict check**: same staff + date + time slot blocked if an existing booking there is `PENDING`, `ACCEPTED`, or `COMPLETED` (only `REJECTED`/`CANCELLED` free the slot)
-    - Validates all `serviceIds` exist and belong to this shop
-    - Snapshots each service's current price into `BookingServiceItem.priceAtBooking`
+  - If the requester is shop staff → guest booking (`guestName`/`guestPhone` required, `customerId` null)
+  - Otherwise → customer books for themselves (`customerId` = their own ID)
+  - Validates `staffId` actually belongs to the shop
+  - **Slot-conflict check**: same staff + date + time slot blocked if an existing booking there is `PENDING`, `ACCEPTED`, or `COMPLETED` (only `REJECTED`/`CANCELLED` free the slot)
+  - Validates all `serviceIds` exist and belong to this shop
+  - Snapshots each service's current price into `BookingServiceItem.priceAtBooking`
 - `BookingStatus.canTransitionTo(...)` — enum-level state machine:
-    - `PENDING` → `ACCEPTED` / `REJECTED` / `CANCELLED`
-    - `ACCEPTED` → `COMPLETED` / `CANCELLED`
-    - `REJECTED`, `COMPLETED`, `CANCELLED` → terminal
+  - `PENDING` → `ACCEPTED` / `REJECTED` / `CANCELLED`
+  - `ACCEPTED` → `COMPLETED` / `CANCELLED`
+  - `REJECTED`, `COMPLETED`, `CANCELLED` → terminal
 - `PATCH /api/shops/{shopId}/bookings/{bookingId}/status` — staff-only; enforces the transition rules above
 - `GET /api/shops/{shopId}/bookings` — shop/staff view, optional `?date=` and `?status=` filters
 - `GET /api/customers/me/bookings` — a customer's own bookings across any shop (identity always derived from JWT, never a path param)
 
 ### Phase 4 — Billing & Dashboard
 - `POST /api/shops/{shopId}/bookings/{bookingId}/bill`:
-    - Only allowed once a booking is `COMPLETED`
-    - Blocks double-billing the same booking
-    - Recalculates total from `BookingServiceItem` server-side (never trusts a client-sent amount)
-    - `paymentStatus` set to `PAID` immediately (no real payment gateway integrated yet — see Roadmap)
+  - Only allowed once a booking is `COMPLETED`
+  - Blocks double-billing the same booking
+  - Recalculates total from `BookingServiceItem` server-side (never trusts a client-sent amount)
+  - `paymentStatus` set to `PAID` immediately (no real payment gateway integrated yet — see Roadmap)
 - `GET /api/shops/{shopId}/dashboard/summary?startDate=&endDate=`:
-    - Total revenue (sum of bills in range)
-    - Total bookings in range
-    - Daily revenue breakdown (for bar-chart rendering)
-    - Top customers by spend (resolves registered customers by name via `User`, guests by `guestName`)
+  - Total revenue (sum of bills in range)
+  - Total bookings in range
+  - Daily revenue breakdown (for bar-chart rendering)
+  - Top customers by spend (resolves registered customers by name via `User`, guests by `guestName`)
 
 ---
 
@@ -132,18 +132,26 @@ Naming note: `ServiceItem`/`BookingServiceItem` are named to avoid colliding wit
 - JWTs are stateless (no server-side session); signed with HMAC-SHA, secret via `JWT_SECRET` env var
 - `shop_id` is **never** trusted from client-controlled fields for tenant-scoped writes — always derived from the authenticated user's `ShopStaff` membership
 - Ownership double-checks on update/delete endpoints (e.g. a service's `shopId` matching the URL's `shopId`) prevent cross-tenant ID-guessing attacks
-- `.gitignore` excludes `application.properties` (contains local DB credentials + JWT secret); `application.properties.example` should be used as the template for setup
+- `.gitignore` excludes `application.properties` and `target/` (the build folder, whose compiled output previously carried a copy of the properties file into git — now fixed); `application.properties.example` is the setup template.
+- JWT signing secret has been rotated since the original commit history exposure.
 
 ---
 
 ## Known Loose Ends / Tech Debt
 
 1. **Code duplication**: the Booking → DTO mapping logic (services list + total calculation) is duplicated across `BookingController` and `CustomerBookingController`. Should be extracted into a shared mapper or `BookingService` class.
-2. **No server-side logging** in `GlobalExceptionHandler`'s catch-all — unexpected 500s aren't currently logged anywhere for debugging.
+2. ~~No server-side logging~~ — `GlobalExceptionHandler` logs via `@Slf4j` on every handler.
 3. **`ddl-auto: update`** — convenient for active development, but should move to a proper migration tool (Flyway or Liquibase) before any real/production deployment.
-4. **Git history** contains an old commit with a real local DB password and JWT secret (before `.gitignore` was corrected). Low risk on a private repo; should be scrubbed (`git filter-repo` / BFG) or secrets rotated before the repo ever goes public.
-5. **Dashboard performance**: top-customer aggregation does some in-memory (Java stream) grouping and per-booking `User` lookups rather than pure SQL aggregation. Fine at current scale; would need optimization if a shop accumulates thousands of bills.
-6. **Slot duration**: `Booking.timeSlot` is a single point in time with no duration — a 60-minute service doesn't block the next slot. Matches the wireframe's discrete time-slot grid for now; real duration-aware scheduling is a future enhancement.
+4. ~~Leaked secrets~~ — **Fixed.** `target/` was untracked from git (was never gitignored, so the build's compiled copy of `application.properties` was committed alongside the source file). JWT secret has been rotated. DB password rotation deferred (shared across other local projects) — Postgres is not internet-exposed, so risk is contained for now.
+5. ~~Any shop staff member could add other staff~~ — **Fixed.** `ShopAccessService.verifyShopOwner()` now restricts `POST /api/shops/{shopId}/staff` to the shop owner only.
+6. ~~Top-customer dashboard aggregation merged customers sharing a display name~~ — **Fixed.** Grouping now keys on `customerId`/`guestPhone` instead of name string.
+7. ~~Login/registration email matching was case-sensitive~~ — **Fixed.** Email is normalized to lowercase at register, login, and `loadUserByUsername`.
+8. **Booking slot-conflict check has a race condition** (TOCTOU): concurrent requests for the same staff/date/time-slot can both pass the in-app check before either save completes. No DB-level unique constraint backs it up yet. *(Deferred — needs a schema decision.)*
+9. **No `@Transactional` boundaries** on multi-step writes (e.g. booking + its service line items). A partial failure mid-write could leave inconsistent rows. *(Deferred — tied to #8.)*
+10. **Dashboard performance**: top-customer aggregation still does in-memory grouping with per-booking `User` lookups rather than pure SQL aggregation. Fine at current scale.
+11. **Slot duration**: `Booking.timeSlot` is a single point in time with no duration.
+12. **No remove-staff endpoint** — staff can be added but not removed via the API once granted access.
+13. `ShopStaff.roleInShop` is a free-text string, not an enum — the owner-check currently does an exact string match on `"Owner"`. Works since only `createShop` ever sets that value, but worth hardening to an enum later.
 
 ---
 
@@ -239,4 +247,3 @@ curl -X POST http://localhost:8080/api/shops \
 | GET | `/api/shops/{shopId}/dashboard/summary` | Shop staff | `?startDate=&endDate=` required |
 
 ---
-
