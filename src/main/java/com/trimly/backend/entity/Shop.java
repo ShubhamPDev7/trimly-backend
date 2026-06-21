@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "shops")
+@SQLRestriction("deleted = false")
 @Getter
 @Setter
 @NoArgsConstructor
