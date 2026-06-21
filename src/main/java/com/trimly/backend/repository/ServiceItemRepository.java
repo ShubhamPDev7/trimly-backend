@@ -9,8 +9,7 @@ import java.util.UUID;
 
 public interface ServiceItemRepository extends JpaRepository<ServiceItem, UUID> {
 
-    List<ServiceItem> findByShopId(UUID shopId);
-
-    List<ServiceItem> findByShopIdAndCategory(UUID shopId, ServiceCategory category);
+    List<ServiceItem> findByShopIdAndDeletedFalse(UUID shopId);
+    List<ServiceItem> findByShopIdAndCategoryAndDeletedFalse(UUID shopId, ServiceCategory category);
 
 }

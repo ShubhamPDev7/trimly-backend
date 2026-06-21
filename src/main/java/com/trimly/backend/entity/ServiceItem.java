@@ -13,6 +13,7 @@ import lombok.Setter;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 
@@ -52,4 +53,8 @@ public class ServiceItem implements Serializable {
 
     @Column(name = "image_url")
     private String imageUrl;
+
+    private boolean deleted = false;
+
+    private Instant deletedAt;
 }
