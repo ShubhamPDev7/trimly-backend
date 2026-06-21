@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -42,6 +43,7 @@ public class BookingController {
     private final BillRepository billRepository;
 
 
+    @Transactional
     @PostMapping
     public ResponseEntity<BookingResponse> createBooking(
             @PathVariable UUID shopId,
@@ -156,6 +158,7 @@ public class BookingController {
         );
     }
 
+    @Transactional
     @PatchMapping("/{bookingId}/status")
     public ResponseEntity<BookingResponse> updateBookingStatus(
             @PathVariable UUID shopId,
@@ -237,6 +240,7 @@ public class BookingController {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
     @PostMapping("/{bookingId}/bill")
     public ResponseEntity<BillResponse> createBill(
             @PathVariable UUID shopId,
