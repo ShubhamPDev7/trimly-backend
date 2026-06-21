@@ -12,6 +12,9 @@ spring.jpa.properties.hibernate.format_sql=true
 server.port=${SERVER_PORT:8080}
 
 trimly.jwt.secret=${JWT_SECRET:replace_with_a_long_random_secret}
-trimly.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
+trimly.jwt.expiration-ms=${JWT_EXPIRATION_MS:900000}
+trimly.refresh-token.expiration-ms=${REFRESH_TOKEN_EXPIRATION_MS:2592000000}
 resend.api.key=${RESEND_API_KEY:}
 app.frontend.reset-password-url=${FRONTEND_RESET_PASSWORD_URL:http://localhost:5173/reset-password}
+
+

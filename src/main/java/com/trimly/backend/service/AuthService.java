@@ -4,13 +4,16 @@ import com.trimly.backend.dto.auth.AuthResponse;
 import com.trimly.backend.dto.auth.ForgotPasswordRequest;
 import com.trimly.backend.dto.auth.LoginRequest;
 import com.trimly.backend.dto.auth.MessageResponse;
+import com.trimly.backend.dto.auth.RefreshTokenRequest;
 import com.trimly.backend.dto.auth.RegisterRequest;
 import com.trimly.backend.dto.auth.ResetPasswordRequest;
 import com.trimly.backend.entity.PasswordResetToken;
+import com.trimly.backend.entity.RefreshToken;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
 import com.trimly.backend.enums.Role;
 import com.trimly.backend.repository.PasswordResetTokenRepository;
+import com.trimly.backend.repository.RefreshTokenRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
 import com.trimly.backend.repository.UserRepository;
 import com.trimly.backend.security.JwtUtil;
@@ -42,6 +45,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final ShopStaffRepository shopStaffRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
@@ -49,6 +53,9 @@ public class AuthService {
 
     @Value("${app.frontend.reset-password-url}")
     private String resetPasswordBaseUrl;
+
+    @Value("${trimly.refresh-token.expiration-ms}")
+    private long refreshTokenExpirationMs;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -75,11 +82,13 @@ public class AuthService {
 
         user = userRepository.save(user);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name(), List.of());
+        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name(), List.of());
+        String refreshToken = issueRefreshToken(user.getId());
 
-        return toAuthResponse(user, token);
+        return toAuthResponse(user, accessToken, refreshToken);
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
 
         String normalizedEmail = request.email().trim().toLowerCase();
@@ -95,9 +104,56 @@ public class AuthService {
                 .map(ShopStaff::getShopId)
                 .collect(Collectors.toList());
 
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name(), shopIds);
+        String accessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name(), shopIds);
+        String refreshToken = issueRefreshToken(user.getId());
 
-        return toAuthResponse(user, token);
+        return toAuthResponse(user, accessToken, refreshToken);
+    }
+
+    @Transactional
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+
+        String tokenHash = hashToken(request.refreshToken());
+
+        RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token."));
+
+        if (storedToken.isRevoked()) {
+            revokeAllTokensForUser(storedToken.getUserId());
+            throw new IllegalArgumentException("Refresh token has already been used. All sessions have been logged out for security - please log in again.");
+        }
+
+        if (storedToken.getExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalArgumentException("Refresh token has expired. Please log in again.");
+        }
+
+        User user = userRepository.findById(storedToken.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token."));
+
+        storedToken.setRevoked(true);
+        refreshTokenRepository.save(storedToken);
+
+        List<UUID> shopIds = shopStaffRepository.findByUserId(user.getId()).stream()
+                .map(ShopStaff::getShopId)
+                .collect(Collectors.toList());
+
+        String newAccessToken = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name(), shopIds);
+        String newRefreshToken = issueRefreshToken(user.getId());
+
+        return toAuthResponse(user, newAccessToken, newRefreshToken);
+    }
+
+    @Transactional
+    public MessageResponse logout(RefreshTokenRequest request) {
+
+        String tokenHash = hashToken(request.refreshToken());
+
+        refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(token -> {
+            token.setRevoked(true);
+            refreshTokenRepository.save(token);
+        });
+
+        return new MessageResponse("Logged out successfully.");
     }
 
     @Transactional
@@ -106,7 +162,6 @@ public class AuthService {
         String normalizedEmail = request.email().trim().toLowerCase();
 
         Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
-
 
         if (userOpt.isPresent()) {
             User user = userOpt.get();
@@ -155,7 +210,30 @@ public class AuthService {
         resetToken.setUsed(true);
         passwordResetTokenRepository.save(resetToken);
 
+        revokeAllTokensForUser(user.getId());
+
         return new MessageResponse("Password has been reset successfully.");
+    }
+
+    private String issueRefreshToken(UUID userId) {
+        String rawToken = generateRawToken();
+        String tokenHash = hashToken(rawToken);
+
+        RefreshToken refreshToken = RefreshToken.builder()
+                .userId(userId)
+                .tokenHash(tokenHash)
+                .expiresAt(Instant.now().plus(refreshTokenExpirationMs, ChronoUnit.MILLIS))
+                .build();
+
+        refreshTokenRepository.save(refreshToken);
+
+        return rawToken;
+    }
+
+    private void revokeAllTokensForUser(UUID userId) {
+        List<RefreshToken> activeTokens = refreshTokenRepository.findByUserIdAndRevokedFalse(userId);
+        activeTokens.forEach(token -> token.setRevoked(true));
+        refreshTokenRepository.saveAll(activeTokens);
     }
 
     private String generateRawToken() {
@@ -174,8 +252,8 @@ public class AuthService {
         }
     }
 
-    private AuthResponse toAuthResponse(User user, String token) {
-        return new AuthResponse(token, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
+    private AuthResponse toAuthResponse(User user, String accessToken, String refreshToken) {
+        return new AuthResponse(accessToken, refreshToken, user.getId(), user.getName(), user.getEmail(), user.getRole().name());
     }
 
 }

@@ -4,6 +4,7 @@ import com.trimly.backend.dto.auth.AuthResponse;
 import com.trimly.backend.dto.auth.ForgotPasswordRequest;
 import com.trimly.backend.dto.auth.LoginRequest;
 import com.trimly.backend.dto.auth.MessageResponse;
+import com.trimly.backend.dto.auth.RefreshTokenRequest;
 import com.trimly.backend.dto.auth.RegisterRequest;
 import com.trimly.backend.dto.auth.ResetPasswordRequest;
 import com.trimly.backend.service.AuthService;
@@ -32,6 +33,18 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<MessageResponse> logout(@Valid @RequestBody RefreshTokenRequest request) {
+        MessageResponse response = authService.logout(request);
         return ResponseEntity.ok(response);
     }
 
