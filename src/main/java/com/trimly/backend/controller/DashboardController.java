@@ -69,9 +69,7 @@ public class DashboardController {
                 .sorted(Comparator.comparing(DashboardSummaryResponse.DailyRevenue::date))
                 .collect(Collectors.toList());
 
-        List<Booking> bookingsInRange = bookingRepository.findByShopId(shopId).stream()
-                .filter(b -> !b.getBookingDate().isBefore(startDate) && !b.getBookingDate().isAfter(endDate))
-                .collect(Collectors.toList());
+        List<Booking> bookingsInRange = bookingRepository.findByShopIdAndBookingDateBetween(shopId, startDate, endDate);
 
         List<DashboardSummaryResponse.TopCustomer> topCustomers = buildTopCustomers(bills, bookingsInRange);
 
@@ -140,9 +138,9 @@ public class DashboardController {
         Instant start = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant end = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        List<Booking> completedBookings = bookingRepository.findByShopId(shopId).stream()
+        List<Booking> completedBookings = bookingRepository
+                .findByShopIdAndBookingDateBetween(shopId, startDate, endDate).stream()
                 .filter(b -> b.getStatus() == BookingStatus.COMPLETED)
-                .filter(b -> !b.getBookingDate().isBefore(startDate) && !b.getBookingDate().isAfter(endDate))
                 .collect(Collectors.toList());
 
         List<Bill> bills = billRepository.findByShopIdAndCreatedAtBetween(shopId, start, end);

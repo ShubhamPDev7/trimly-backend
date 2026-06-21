@@ -18,6 +18,8 @@ import com.trimly.backend.service.BookingMapper;
 import com.trimly.backend.service.ShopAccessService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -160,11 +162,14 @@ public class BookingController {
             @PathVariable UUID shopId,
             @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false) BookingStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         shopAccessService.verifyShopAccess(userDetails.getUser().getId(), shopId);
 
-        List<Booking> bookings = bookingRepository.findByShopId(shopId);
+        Pageable pageable = PageRequest.of(page, size);
+        List<Booking> bookings = bookingRepository.findByShopId(shopId, pageable).getContent();
 
         List<Booking> filtered = bookings.stream()
                 .filter(b -> date == null || b.getBookingDate().equals(date))
