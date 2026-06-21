@@ -1,5 +1,6 @@
 package com.trimly.backend.service;
 
+import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.entity.Booking;
@@ -157,5 +158,149 @@ class BookingServiceTest {
         assertThatThrownBy(() -> bookingService.createBill(shopId, bookingId, null, currentUserId))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already been billed");
+    }
+
+    @Test
+    void createBooking_asCustomer_setsCustomerIdAndNoGuestInfo() {
+        UUID serviceId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        User customer = new User();
+        customer.setId(customerId);
+
+        BookingRequest request = new BookingRequest(
+                staffId, LocalDate.now().plusDays(1), LocalTime.of(10, 0),
+                List.of(serviceId), null, null
+        );
+
+        serviceItem.setId(serviceId);
+
+        when(shopAccessService.hasShopAccess(customerId, shopId)).thenReturn(false);
+        when(serviceItemRepository.findAllById(List.of(serviceId))).thenReturn(List.of(serviceItem));
+        when(shopAccessService.hasShopAccess(staffId, shopId)).thenReturn(true);
+        when(bookingRepository.findByStaffIdAndBookingDate(staffId, request.bookingDate())).thenReturn(List.of());
+        when(bookingRepository.save(any())).thenReturn(booking);
+        when(bookingServiceItemRepository.saveAll(any())).thenReturn(List.of());
+        when(bookingMapper.toResponse(any(), any(), any())).thenReturn(mock(BookingResponse.class));
+
+        BookingResponse response = bookingService.createBooking(shopId, request, customer);
+
+        assertThat(response).isNotNull();
+        verify(bookingRepository).save(any());
+    }
+
+    @Test
+    void createBooking_asStaff_withoutGuestInfo_throwsException() {
+        User staffUser = new User();
+        staffUser.setId(staffId);
+
+        BookingRequest request = new BookingRequest(
+                staffId, LocalDate.now().plusDays(1), LocalTime.of(10, 0),
+                List.of(UUID.randomUUID()), null, null
+        );
+
+        when(shopAccessService.hasShopAccess(staffId, shopId)).thenReturn(true);
+
+        assertThatThrownBy(() -> bookingService.createBooking(shopId, request, staffUser))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("guestName and guestPhone are required");
+    }
+
+    @Test
+    void createBooking_slotAlreadyTaken_throwsException() {
+        UUID serviceId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        User customer = new User();
+        customer.setId(customerId);
+
+        BookingRequest request = new BookingRequest(
+                staffId, LocalDate.now().plusDays(1), LocalTime.of(10, 0),
+                List.of(serviceId), null, null
+        );
+
+        Booking existingBooking = Booking.builder()
+                .staffId(staffId)
+                .bookingDate(request.bookingDate())
+                .timeSlot(LocalTime.of(10, 0))
+                .status(BookingStatus.ACCEPTED)
+                .build();
+
+        serviceItem.setId(serviceId);
+
+        when(shopAccessService.hasShopAccess(customerId, shopId)).thenReturn(false);
+        when(serviceItemRepository.findAllById(List.of(serviceId))).thenReturn(List.of(serviceItem));
+        when(shopAccessService.hasShopAccess(staffId, shopId)).thenReturn(true);
+        when(bookingRepository.findByStaffIdAndBookingDate(staffId, request.bookingDate())).thenReturn(List.of(existingBooking));
+
+        assertThatThrownBy(() -> bookingService.createBooking(shopId, request, customer))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("time slot is already booked");
+    }
+
+    @Test
+    void createBooking_serviceNotFound_throwsException() {
+        UUID serviceId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        User customer = new User();
+        customer.setId(customerId);
+
+        BookingRequest request = new BookingRequest(
+                staffId, LocalDate.now().plusDays(1), LocalTime.of(10, 0),
+                List.of(serviceId), null, null
+        );
+
+        when(shopAccessService.hasShopAccess(customerId, shopId)).thenReturn(false);
+        when(serviceItemRepository.findAllById(List.of(serviceId))).thenReturn(List.of());
+
+        assertThatThrownBy(() -> bookingService.createBooking(shopId, request, customer))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("One or more services were not found");
+    }
+
+    @Test
+    void createBooking_staffNotInShop_throwsException() {
+        UUID serviceId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
+        User customer = new User();
+        customer.setId(customerId);
+
+        BookingRequest request = new BookingRequest(
+                staffId, LocalDate.now().plusDays(1), LocalTime.of(10, 0),
+                List.of(serviceId), null, null
+        );
+
+        serviceItem.setId(serviceId);
+
+        when(shopAccessService.hasShopAccess(customerId, shopId)).thenReturn(false);
+        when(serviceItemRepository.findAllById(List.of(serviceId))).thenReturn(List.of(serviceItem));
+        when(shopAccessService.hasShopAccess(staffId, shopId)).thenReturn(false);
+
+        assertThatThrownBy(() -> bookingService.createBooking(shopId, request, customer))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("staff member does not belong to this shop");
+    }
+
+    @Test
+    void listShopBookings_filtersCorrectly() {
+        Booking pendingBooking = Booking.builder()
+                .id(UUID.randomUUID()).shopId(shopId)
+                .bookingDate(LocalDate.now()).status(BookingStatus.PENDING).build();
+
+        Booking completedBooking = Booking.builder()
+                .id(UUID.randomUUID()).shopId(shopId)
+                .bookingDate(LocalDate.now()).status(BookingStatus.COMPLETED).build();
+
+        doNothing().when(shopAccessService).verifyShopAccess(currentUserId, shopId);
+        when(bookingRepository.findByShopId(eq(shopId), any())).thenReturn(
+                new org.springframework.data.domain.PageImpl<>(List.of(pendingBooking, completedBooking))
+        );
+        when(bookingMapper.toResponseList(List.of(pendingBooking))).thenReturn(List.of(mock(BookingResponse.class)));
+
+        List<BookingResponse> response = bookingService.listShopBookings(shopId, null, BookingStatus.PENDING, 0, 10, currentUserId);
+
+        assertThat(response).hasSize(1);
     }
 }
