@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -64,5 +65,18 @@ public class CustomerBookingController {
                 user.getPhone(),
                 user.getCreatedAt()
         );
+    }
+
+    @DeleteMapping
+    public ResponseEntity<Void> deleteMyAccount(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        User user = userDetails.getUser();
+
+        user.setDeleted(true);
+        user.setDeletedAt(Instant.now());
+        userRepository.save(user);
+
+        return ResponseEntity.noContent().build();
     }
 }
