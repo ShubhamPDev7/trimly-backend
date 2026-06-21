@@ -47,4 +47,8 @@ public class Shop implements Serializable {
     protected void onCreate() {
         this.createdAt = Instant.now();
     }
+
+    private boolean deleted = false;
+
+    private Instant deletedAt;
 }

@@ -7,6 +7,7 @@ import com.trimly.backend.dto.shop.ShopStaffResponse;
 import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
+import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
 import com.trimly.backend.repository.UserRepository;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -137,6 +139,27 @@ public class ShopController {
         return ResponseEntity.status(HttpStatus.CREATED).body(
                 new ShopStaffResponse(userToAdd.getId(), userToAdd.getName(), userToAdd.getEmail(), request.roleInShop())
         );
+    }
+
+    @DeleteMapping("/{shopId}")
+    public ResponseEntity<Void> deleteShop(
+            @PathVariable UUID shopId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        shopAccessService.verifyShopOwner(userDetails.getUser().getId(), shopId);
+
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found."));
+
+        if (shop.isDeleted()) {
+            throw new ResourceNotFoundException("Shop not found.");
+        }
+
+        shop.setDeleted(true);
+        shop.setDeletedAt(Instant.now());
+        shopRepository.save(shop);
+
+        return ResponseEntity.noContent().build();
     }
 
 }

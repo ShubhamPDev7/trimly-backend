@@ -10,4 +10,6 @@ public interface ShopRepository extends JpaRepository<Shop, UUID> {
 
     List<Shop> findByOwnerId(UUID ownerId);
 
+    List<Shop> findByOwnerIdAndDeletedFalse(UUID ownerId);
+
 }
