@@ -2,7 +2,6 @@ package com.trimly.backend.controller;
 
 import com.trimly.backend.dto.bill.BillRequest;
 import com.trimly.backend.dto.bill.BillResponse;
-import com.trimly.backend.dto.booking.BookedServiceResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
@@ -15,6 +14,7 @@ import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.BookingServiceItemRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
 import com.trimly.backend.security.CustomUserDetails;
+import com.trimly.backend.service.BookingMapper;
 import com.trimly.backend.service.ShopAccessService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,6 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +40,7 @@ public class BookingController {
     private final ServiceItemRepository serviceItemRepository;
     private final ShopAccessService shopAccessService;
     private final BillRepository billRepository;
+    private final BookingMapper bookingMapper;
 
 
     @Transactional
@@ -123,39 +123,7 @@ public class BookingController {
 
         bookingServiceItemRepository.saveAll(bookingServices);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(savedBooking, bookingServices, services));
-    }
-
-    private BookingResponse toResponse(Booking booking, List<BookingServiceItem> bookingServices, List<ServiceItem> services) {
-        Map<UUID, String> serviceNamesById = services.stream()
-                .collect(Collectors.toMap(ServiceItem::getId, ServiceItem::getName));
-
-        List<BookedServiceResponse> serviceResponses = bookingServices.stream()
-                .map(bs -> new BookedServiceResponse(
-                        bs.getServiceId(),
-                        serviceNamesById.get(bs.getServiceId()),
-                        bs.getPriceAtBooking()
-                ))
-                .collect(Collectors.toList());
-
-        BigDecimal total = bookingServices.stream()
-                .map(BookingServiceItem::getPriceAtBooking)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return new BookingResponse(
-                booking.getId(),
-                booking.getShopId(),
-                booking.getCustomerId(),
-                booking.getStaffId(),
-                booking.getGuestName(),
-                booking.getGuestPhone(),
-                booking.getBookingDate(),
-                booking.getTimeSlot(),
-                booking.getStatus(),
-                serviceResponses,
-                total,
-                booking.getCreatedAt()
-        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(bookingMapper.toResponse(savedBooking, bookingServices, services));
     }
 
     @Transactional
@@ -184,12 +152,7 @@ public class BookingController {
         booking.setStatus(request.status());
         Booking updatedBooking = bookingRepository.save(booking);
 
-        List<BookingServiceItem> bookingService = bookingServiceItemRepository.findByBookingId(bookingId);
-        List<ServiceItem> services = serviceItemRepository.findAllById(
-                bookingService.stream().map(BookingServiceItem::getServiceId).collect(Collectors.toList())
-        );
-
-        return ResponseEntity.ok(toResponse(updatedBooking, bookingService, services));
+        return ResponseEntity.ok(bookingMapper.toResponse(updatedBooking));
     }
 
     @GetMapping
@@ -208,36 +171,7 @@ public class BookingController {
                 .filter(b -> status == null || b.getStatus() == status)
                 .collect(Collectors.toList());
 
-        return ResponseEntity.ok(toResponseList(filtered));
-    }
-
-    private List<BookingResponse> toResponseList(List<Booking> bookings) {
-        if (bookings.isEmpty()) return List.of();
-
-
-        List<UUID> bookingIds = bookings.stream().map(Booking::getId).collect(Collectors.toList());
-        List<BookingServiceItem> allItems = bookingServiceItemRepository.findByBookingIdIn(bookingIds);
-
-
-        List<UUID> serviceIds = allItems.stream().map(BookingServiceItem::getServiceId).collect(Collectors.toList());
-        List<ServiceItem> allServices = serviceItemRepository.findAllById(serviceIds);
-
-
-        Map<UUID, List<BookingServiceItem>> itemsByBookingId = allItems.stream()
-                .collect(Collectors.groupingBy(BookingServiceItem::getBookingId));
-        Map<UUID, ServiceItem> servicesById = allServices.stream()
-                .collect(Collectors.toMap(ServiceItem::getId, s -> s));
-
-
-        return bookings.stream()
-                .map(booking -> {
-                    List<BookingServiceItem> items = itemsByBookingId.getOrDefault(booking.getId(), List.of());
-                    List<ServiceItem> services = items.stream()
-                            .map(i -> servicesById.get(i.getServiceId()))
-                            .collect(Collectors.toList());
-                    return toResponse(booking, items, services);
-                })
-                .collect(Collectors.toList());
+        return ResponseEntity.ok(bookingMapper.toResponseList(filtered));
     }
 
     @Transactional
