@@ -3,19 +3,14 @@ package com.trimly.backend.controller;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.customer.CustomerProfileResponse;
 import com.trimly.backend.dto.customer.UpdateProfileRequest;
-import com.trimly.backend.entity.Booking;
-import com.trimly.backend.entity.User;
-import com.trimly.backend.repository.BookingRepository;
-import com.trimly.backend.repository.UserRepository;
 import com.trimly.backend.security.CustomUserDetails;
-import com.trimly.backend.service.BookingMapper;
+import com.trimly.backend.service.CustomerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -23,24 +18,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CustomerBookingController {
 
-    private final BookingRepository bookingRepository;
-    private final UserRepository userRepository;
-    private final BookingMapper bookingMapper;
+    private final CustomerService customerService;
 
     @GetMapping("/bookings")
     public ResponseEntity<List<BookingResponse>> getMyBookings(
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        List<Booking> bookings = bookingRepository.findByCustomerId(userDetails.getUser().getId());
-        return ResponseEntity.ok(bookingMapper.toResponseList(bookings));
+        return ResponseEntity.ok(customerService.getMyBookings(userDetails.getUser().getId()));
     }
 
     @GetMapping
     public ResponseEntity<CustomerProfileResponse> getMyProfile(
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        User user = userDetails.getUser();
-        return ResponseEntity.ok(toProfileResponse(user));
+        return ResponseEntity.ok(customerService.getMyProfile(userDetails.getUser()));
     }
 
     @PutMapping
@@ -48,35 +39,14 @@ public class CustomerBookingController {
             @Valid @RequestBody UpdateProfileRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        User user = userDetails.getUser();
-        user.setName(request.name());
-        user.setPhone(request.phone());
-
-        User updatedUser = userRepository.save(user);
-
-        return ResponseEntity.ok(toProfileResponse(updatedUser));
-    }
-
-    private CustomerProfileResponse toProfileResponse(User user) {
-        return new CustomerProfileResponse(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getCreatedAt()
-        );
+        return ResponseEntity.ok(customerService.updateMyProfile(request, userDetails.getUser()));
     }
 
     @DeleteMapping
     public ResponseEntity<Void> deleteMyAccount(
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        User user = userDetails.getUser();
-
-        user.setDeleted(true);
-        user.setDeletedAt(Instant.now());
-        userRepository.save(user);
-
+        customerService.deleteMyAccount(userDetails.getUser());
         return ResponseEntity.noContent().build();
     }
 }
