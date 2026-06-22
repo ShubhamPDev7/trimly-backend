@@ -1,9 +1,6 @@
 package com.trimly.backend.service;
 
-import com.trimly.backend.dto.shop.AddStaffRequest;
-import com.trimly.backend.dto.shop.ShopRequest;
-import com.trimly.backend.dto.shop.ShopResponse;
-import com.trimly.backend.dto.shop.ShopStaffResponse;
+import com.trimly.backend.dto.shop.*;
 import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
@@ -131,6 +128,49 @@ public class ShopService {
         shop.setDeleted(true);
         shop.setDeletedAt(Instant.now());
         shopRepository.save(shop);
+    }
+
+    @Transactional
+    public void removeStaff(UUID shopId, UUID staffUserId, UUID currentUserId) {
+        shopAccessService.verifyShopOwner(currentUserId, shopId);
+
+        if (staffUserId.equals(currentUserId)) {
+            throw new IllegalArgumentException("Shop owner cannot remove themselves.");
+        }
+
+        ShopStaff staffLink = shopStaffRepository.findByShopIdAndUserId(shopId, staffUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff member not found in this shop."));
+
+        shopStaffRepository.delete(staffLink);
+    }
+
+    @Transactional
+    public ShopResponse updateShop(UUID shopId, ShopUpdateRequest request, UUID currentUserId) {
+        shopAccessService.verifyShopOwner(currentUserId, shopId);
+
+        Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found."));
+
+        if (shop.isDeleted()) {
+            throw new ResourceNotFoundException("Shop not found.");
+        }
+
+        shop.setName(request.name());
+        shop.setAddress(request.address());
+        shop.setLocality(request.locality());
+        shop.setTimezone(request.timezone());
+
+        shop = shopRepository.save(shop);
+
+        return new ShopResponse(
+                shop.getId(),
+                shop.getName(),
+                shop.getAddress(),
+                shop.getLocality(),
+                shop.getOwnerId(),
+                shop.getCreatedAt(),
+                null
+        );
     }
 
 }

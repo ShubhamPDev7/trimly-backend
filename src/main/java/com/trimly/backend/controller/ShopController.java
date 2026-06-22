@@ -1,9 +1,6 @@
 package com.trimly.backend.controller;
 
-import com.trimly.backend.dto.shop.AddStaffRequest;
-import com.trimly.backend.dto.shop.ShopRequest;
-import com.trimly.backend.dto.shop.ShopResponse;
-import com.trimly.backend.dto.shop.ShopStaffResponse;
+import com.trimly.backend.dto.shop.*;
 import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.ShopService;
 import jakarta.validation.Valid;
@@ -58,6 +55,26 @@ public class ShopController {
     ) {
         shopService.deleteShop(shopId, userDetails.getUser().getId());
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{shopId}/staff/{staffUserId}")
+    public ResponseEntity<Void> removeStaff(
+            @PathVariable UUID shopId,
+            @PathVariable UUID staffUserId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        shopService.removeStaff(shopId, staffUserId, userDetails.getUser().getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{shopId}")
+    public ResponseEntity<ShopResponse> updateShop(
+            @PathVariable UUID shopId,
+            @Valid @RequestBody ShopUpdateRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        ShopResponse response = shopService.updateShop(shopId, request, userDetails.getUser().getId());
+        return ResponseEntity.ok(response);
     }
 
 }
