@@ -110,7 +110,15 @@ public class WalkInQueueService {
 
         walkInQueueServiceItemRepository.saveAll(queueServiceItems);
 
-        return toResponseWithEstimate(savedEntry, calculateWaitEstimates(shopId));
+        Map<UUID, WaitEstimate> estimates = calculateWaitEstimates(shopId);
+        List<WalkInQueueEntry> waitingEntries = walkInQueueEntryRepository
+                .findByShopIdAndStatusOrderByJoinedAtAsc(shopId, WalkInStatus.WAITING);
+        int position = 0;
+        for (WalkInQueueEntry e : waitingEntries) {
+            position++;
+            if (e.getId().equals(savedEntry.getId())) break;
+        }
+        return toResponse(savedEntry, estimates.get(savedEntry.getId()), position);
     }
 
     public List<WalkInQueueEntryResponse> listQueue(UUID shopId, UUID currentUserId) {
