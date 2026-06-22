@@ -53,4 +53,9 @@ public class Shop implements Serializable {
     private boolean deleted = false;
 
     private Instant deletedAt;
+
+    @Column(name = "timezone", nullable = false)
+    @Builder.Default
+    private String timezone = "Asia/Kolkata";
+
 }

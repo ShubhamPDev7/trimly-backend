@@ -46,6 +46,7 @@ public class WalkInQueueService {
     private final ServiceItemRepository serviceItemRepository;
     private final ShopStaffRepository shopStaffRepository;
     private final ShopAccessService shopAccessService;
+    private final ShopHoursService shopHoursService;
 
     @Transactional
     public WalkInQueueEntryResponse joinQueue(UUID shopId, WalkInJoinRequest request, User currentUser) {
@@ -301,7 +302,7 @@ public class WalkInQueueService {
                 UUID staffId = entry.getPreferredStaffId();
                 List<Interval> timeline = timelines.computeIfAbsent(staffId, k -> new ArrayList<>());
 
-                Instant start = findEarliestSlot(timeline, now, durationMinutes);
+                Instant start = findEarliestSlot(shopId, timeline, now, durationMinutes);
                 insertInterval(timeline, start, start.plusSeconds(durationMinutes * 60));
 
                 long waitMinutes = Duration.between(now, start).toMinutes();
@@ -313,10 +314,10 @@ public class WalkInQueueService {
 
                 for (UUID staffId : staffIds) {
                     List<Interval> timeline = timelines.computeIfAbsent(staffId, k -> new ArrayList<>());
-                    Instant candidateStart = findEarliestSlot(timeline, now, durationMinutes);
+                    Instant start = findEarliestSlot(shopId, timeline, now, durationMinutes);
 
-                    if (bestStart == null || candidateStart.isBefore(bestStart)) {
-                        bestStart = candidateStart;
+                    if (bestStart == null || start.isBefore(bestStart)) {
+                        bestStart = start;
                         bestStaffId = staffId;
                     }
                 }
@@ -391,19 +392,40 @@ public class WalkInQueueService {
         return timelines;
     }
 
-    private Instant findEarliestSlot(List<Interval> sortedIntervals, Instant from, long durationMinutes) {
-        Instant cursor = from;
+    private Instant findEarliestSlot(UUID shopId, List<Interval> sortedIntervals, Instant from, long durationMinutes) {
+        Instant cursor = shopHoursService.nextOpenInstant(shopId, from);
 
-        for (Interval busy : sortedIntervals) {
-            if (busy.start().isAfter(cursor)) {
-                long gapMinutes = Duration.between(cursor, busy.start()).toMinutes();
-                if (gapMinutes >= durationMinutes) {
-                    return cursor;
+        for (int dayAttempts = 0; dayAttempts < 14; dayAttempts++) {
+            LocalDate cursorDate = cursor.atZone(ZoneOffset.UTC).toLocalDate();
+            Instant closingTime = shopHoursService.closingInstant(shopId, cursorDate);
+
+            if (closingTime == null) {
+                cursor = shopHoursService.nextOpenInstant(shopId, cursor.plusSeconds(60));
+                continue;
+            }
+
+            for (Interval busy : sortedIntervals) {
+                if (busy.start().isAfter(cursor)) {
+                    long gapMinutes = Duration.between(cursor, busy.start()).toMinutes();
+                    if (gapMinutes >= durationMinutes) {
+                        Instant slotEnd = cursor.plusSeconds(durationMinutes * 60);
+                        if (!slotEnd.isAfter(closingTime)) {
+                            return cursor;
+                        }
+                    }
+                }
+                if (busy.end().isAfter(cursor)) {
+                    cursor = busy.end();
                 }
             }
-            if (busy.end().isAfter(cursor)) {
-                cursor = busy.end();
+
+
+            Instant slotEnd = cursor.plusSeconds(durationMinutes * 60);
+            if (!slotEnd.isAfter(closingTime)) {
+                return cursor;
             }
+
+            cursor = shopHoursService.nextOpenInstant(shopId, closingTime.plusSeconds(60));
         }
 
         return cursor;
