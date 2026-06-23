@@ -39,6 +39,7 @@ public class BookingService {
     private final ShopAccessService shopAccessService;
     private final BillRepository billRepository;
     private final BookingMapper bookingMapper;
+    private final LoyaltyService loyaltyService;
 
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
@@ -188,7 +189,9 @@ public class BookingService {
 
         Bill savedBill = billRepository.save(bill);
 
+        loyaltyService.awardPoints(shopId, booking.getCustomerId(), savedBill.getId(), total);
         return toBillResponse(savedBill);
+
     }
 
     private BillResponse toBillResponse(Bill bill) {
