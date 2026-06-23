@@ -179,7 +179,20 @@ public class ReviewService {
         review.setOwnerReply(request.reply());
         review.setOwnerRepliedAt(Instant.now());
 
-        return toResponse(reviewRepository.save(review));
+        ReviewResponse saved = toResponse(reviewRepository.save(review));
+
+
+        try {
+            var shop = shopRepository.findById(shopId).orElseThrow();
+            com.trimly.backend.entity.User reviewer = userRepository.findById(review.getReviewerId()).orElseThrow();
+            emailService.sendOwnerReplyToReviewer(
+                    reviewer.getEmail(), reviewer.getName(), shop.getName(),
+                    request.reply(), review.getRating());
+        } catch (Exception e) {
+            log.error("Failed to send owner reply notification to reviewer: {}", e.getMessage());
+        }
+
+        return saved;
     }
 
     private ReviewResponse toResponse(Review review) {

@@ -25,6 +25,7 @@ public class EmailService {
     private String fromEmail;
 
 
+
     public void sendPasswordResetEmail(String toEmail, String resetLink) {
         send(toEmail,
                 "Reset your Trimly password",
@@ -33,6 +34,7 @@ public class EmailService {
                         + "<p>If you didn't request this, you can safely ignore this email.</p>"
         );
     }
+
 
 
     public void sendBookingConfirmationToCustomer(
@@ -105,6 +107,7 @@ public class EmailService {
     }
 
 
+
     public void sendNewBookingToOwner(
             String toEmail, String ownerName, String customerName,
             String shopName, LocalDate date, LocalTime timeSlot, String services) {
@@ -140,6 +143,7 @@ public class EmailService {
     }
 
 
+
     public void sendQueueJoinConfirmation(
             String toEmail, String customerName, String shopName,
             int position, int estimatedWaitMinutes, String services) {
@@ -160,6 +164,7 @@ public class EmailService {
     }
 
 
+
     public void sendNewReviewToOwner(
             String toEmail, String ownerName, String shopName,
             String reviewerName, int rating, String comment) {
@@ -177,6 +182,23 @@ public class EmailService {
                         + "<p>— Trimly</p>"
         );
     }
+
+
+
+    public void sendOwnerReplyToReviewer(
+            String toEmail, String reviewerName, String shopName,
+            String ownerReply, int rating) {
+        String stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+        send(toEmail,
+                shopName + " replied to your review",
+                "<p>Hi " + reviewerName + ",</p>"
+                        + "<p><strong>" + shopName + "</strong> has replied to your review.</p>"
+                        + "<p style='font-size:18px'>" + stars + " (" + rating + "/5)</p>"
+                        + "<p style='margin-top:12px;font-style:italic'>&ldquo;" + ownerReply + "&rdquo;</p>"
+                        + "<p>— Trimly</p>"
+        );
+    }
+
 
 
     private void send(String toEmail, String subject, String html) {
@@ -199,6 +221,7 @@ public class EmailService {
             );
         } catch (Exception e) {
             log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
+            // Fire-and-forget — never propagate email failures to the caller
         }
     }
 
