@@ -13,5 +13,6 @@ public interface BillRepository extends JpaRepository<Bill, UUID> {
     Optional<Bill> findByBookingId(UUID bookingId);
     List<Bill> findByShopId(UUID shopId);
     List<Bill> findByShopIdAndCreatedAtBetween(UUID shopId, Instant start, Instant end);
+    Optional<Bill> findByWalkInQueueEntryId(UUID walkInQueueEntryId);
 
 }

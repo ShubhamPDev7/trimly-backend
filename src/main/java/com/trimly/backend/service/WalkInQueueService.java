@@ -1,29 +1,22 @@
 package com.trimly.backend.service;
 
+import com.trimly.backend.dto.bill.BillRequest;
+import com.trimly.backend.dto.bill.BillResponse;
 import com.trimly.backend.dto.walkin.WalkInJoinRequest;
 import com.trimly.backend.dto.walkin.WalkInQueueEntryResponse;
 import com.trimly.backend.dto.walkin.WalkInQueueServiceResponse;
 import com.trimly.backend.dto.walkin.WalkInStartRequest;
-import com.trimly.backend.entity.Booking;
-import com.trimly.backend.entity.BookingServiceItem;
-import com.trimly.backend.entity.ServiceItem;
-import com.trimly.backend.entity.ShopStaff;
-import com.trimly.backend.entity.User;
-import com.trimly.backend.entity.WalkInQueueEntry;
-import com.trimly.backend.entity.WalkInQueueServiceItem;
+import com.trimly.backend.entity.*;
 import com.trimly.backend.enums.BookingStatus;
+import com.trimly.backend.enums.PaymentStatus;
 import com.trimly.backend.enums.WalkInStatus;
 import com.trimly.backend.exception.ResourceNotFoundException;
-import com.trimly.backend.repository.BookingRepository;
-import com.trimly.backend.repository.BookingServiceItemRepository;
-import com.trimly.backend.repository.ServiceItemRepository;
-import com.trimly.backend.repository.ShopStaffRepository;
-import com.trimly.backend.repository.WalkInQueueEntryRepository;
-import com.trimly.backend.repository.WalkInQueueServiceItemRepository;
+import com.trimly.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -47,6 +40,8 @@ public class WalkInQueueService {
     private final ShopStaffRepository shopStaffRepository;
     private final ShopAccessService shopAccessService;
     private final ShopHoursService shopHoursService;
+    private final BillRepository billRepository;
+    private final LoyaltyService loyaltyService;
 
     @Transactional
     public WalkInQueueEntryResponse joinQueue(UUID shopId, WalkInJoinRequest request, User currentUser) {
@@ -452,6 +447,53 @@ public class WalkInQueueService {
         return services.stream()
                 .mapToLong(s -> s.getEstTimeMinutes() != null ? s.getEstTimeMinutes() : 0)
                 .sum();
+    }
+
+    @Transactional
+    public BillResponse createWalkInBill(UUID shopId, UUID entryId, BillRequest request, UUID currentUserId) {
+        shopAccessService.verifyShopAccess(currentUserId, shopId);
+
+        WalkInQueueEntry entry = getEntryOrThrow(shopId, entryId);
+
+        if (entry.getStatus() != WalkInStatus.COMPLETED) {
+            throw new IllegalArgumentException("Only completed walk-in entries can be billed.");
+        }
+
+        if (billRepository.findByWalkInQueueEntryId(entryId).isPresent()) {
+            throw new IllegalArgumentException("This walk-in entry has already been billed.");
+        }
+
+        List<WalkInQueueServiceItem> serviceItems = walkInQueueServiceItemRepository.findByQueueEntryId(entryId);
+
+        BigDecimal total = serviceItems.stream()
+                .map(WalkInQueueServiceItem::getPriceAtJoin)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Bill bill = Bill.builder()
+                .shopId(shopId)
+                .walkInQueueEntryId(entryId)
+                .totalAmount(total)
+                .paymentMode(request.paymentMode())
+                .paymentStatus(PaymentStatus.PAID)
+                .build();
+
+        Bill savedBill = billRepository.save(bill);
+
+        loyaltyService.awardPoints(shopId, entry.getCustomerId(), savedBill.getId(), total);
+
+        return toBillResponse(savedBill);
+    }
+
+    private BillResponse toBillResponse(Bill bill) {
+        return new BillResponse(
+                bill.getId(),
+                bill.getShopId(),
+                bill.getBookingId(),
+                bill.getTotalAmount(),
+                bill.getPaymentMode(),
+                bill.getPaymentStatus(),
+                bill.getCreatedAt()
+        );
     }
 
 }

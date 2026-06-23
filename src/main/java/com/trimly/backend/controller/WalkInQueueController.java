@@ -1,5 +1,7 @@
 package com.trimly.backend.controller;
 
+import com.trimly.backend.dto.bill.BillRequest;
+import com.trimly.backend.dto.bill.BillResponse;
 import com.trimly.backend.dto.walkin.WalkInJoinRequest;
 import com.trimly.backend.dto.walkin.WalkInQueueEntryResponse;
 import com.trimly.backend.dto.walkin.WalkInStartRequest;
@@ -80,6 +82,18 @@ public class WalkInQueueController {
     ) {
         WalkInQueueEntryResponse response = walkInQueueService.markNoShow(shopId, entryId, userDetails.getUser().getId());
         return ResponseEntity.ok(response);
+    }
+
+
+    @PostMapping("/{entryId}/bill")
+    public ResponseEntity<BillResponse> createWalkInBill(
+            @PathVariable UUID shopId,
+            @PathVariable UUID entryId,
+            @Valid @RequestBody BillRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        BillResponse response = walkInQueueService.createWalkInBill(shopId, entryId, request, userDetails.getUser().getId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
 }

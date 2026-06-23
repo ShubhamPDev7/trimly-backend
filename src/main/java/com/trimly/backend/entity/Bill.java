@@ -56,6 +56,9 @@ public class Bill implements Serializable {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "walk_in_queue_entry_id")
+    private UUID walkInQueueEntryId;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
