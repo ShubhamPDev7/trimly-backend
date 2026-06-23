@@ -4,6 +4,7 @@ import com.trimly.backend.dto.shop.*;
 import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
+import com.trimly.backend.enums.StaffRole;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
@@ -43,7 +44,7 @@ public class ShopService {
         ShopStaff ownerLink = ShopStaff.builder()
                 .shopId(shop.getId())
                 .userId(currentUser.getId())
-                .roleInShop("Owner")
+                .roleInShop(StaffRole.OWNER)
                 .build();
 
         shopStaffRepository.save(ownerLink);

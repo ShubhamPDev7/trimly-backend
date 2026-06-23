@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import com.trimly.backend.enums.StaffRole;
 import java.io.Serializable;
 import java.util.UUID;
 
@@ -32,6 +33,7 @@ public class ShopStaff implements Serializable {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "role_in_shop", nullable = false)
-    private String roleInShop;
+    private StaffRole roleInShop;
 }

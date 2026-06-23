@@ -3,6 +3,7 @@ package com.trimly.backend.service;
 import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.exception.ResourceNotFoundException;
+import com.trimly.backend.enums.StaffRole;
 import com.trimly.backend.exception.ShopAccessDeniedException;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
@@ -36,7 +37,7 @@ public class ShopAccessService {
         ShopStaff staffLink = shopStaffRepository.findByShopIdAndUserId(shopId, userId)
                 .orElseThrow(() -> new ShopAccessDeniedException("You do not have access to this shop"));
 
-        if (!"Owner".equals(staffLink.getRoleInShop())) {
+        if (staffLink.getRoleInShop() != StaffRole.OWNER) {
             throw new ShopAccessDeniedException("Only the shop owner can perform this action");
         }
     }
