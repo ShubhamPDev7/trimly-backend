@@ -206,4 +206,27 @@ public class BookingService {
         );
     }
 
+    @Transactional
+    public BookingResponse cancelBooking(UUID shopId, UUID bookingId, UUID currentUserId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found."));
+
+        if (!booking.getShopId().equals(shopId)) {
+            throw new ResourceNotFoundException("Booking not found.");
+        }
+
+        if (!booking.getCustomerId().equals(currentUserId)) {
+            throw new IllegalArgumentException("You can only cancel your own bookings.");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.ACCEPTED) {
+            throw new IllegalArgumentException("Only pending or accepted bookings can be cancelled.");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        Booking updated = bookingRepository.save(booking);
+
+        return bookingMapper.toResponse(updated);
+    }
+
 }
