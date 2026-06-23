@@ -8,6 +8,7 @@ import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
 import com.trimly.backend.enums.BookingStatus;
 import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.BookingService;
+import com.trimly.backend.service.BookingService.PagedBookingsResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,7 +17,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -49,7 +49,7 @@ public class BookingController {
     }
 
     @GetMapping
-    public ResponseEntity<List<BookingResponse>> listShopBookings(
+    public ResponseEntity<PagedBookingsResponse> listShopBookings(
             @PathVariable UUID shopId,
             @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false) BookingStatus status,
@@ -57,7 +57,7 @@ public class BookingController {
             @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        List<BookingResponse> response = bookingService.listShopBookings(
+        PagedBookingsResponse response = bookingService.listShopBookings(
                 shopId, date, status, page, size, userDetails.getUser().getId());
         return ResponseEntity.ok(response);
     }

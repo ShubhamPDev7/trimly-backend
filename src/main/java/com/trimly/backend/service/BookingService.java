@@ -22,8 +22,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -198,19 +200,41 @@ public class BookingService {
         return bookingMapper.toResponse(updatedBooking);
     }
 
-    public List<BookingResponse> listShopBookings(UUID shopId, LocalDate date, BookingStatus status, int page, int size, UUID currentUserId) {
+    public PagedBookingsResponse listShopBookings(UUID shopId, LocalDate date, BookingStatus status, int page, int size, UUID currentUserId) {
         shopAccessService.verifyShopAccess(currentUserId, shopId);
 
-        Pageable pageable = PageRequest.of(page, size);
-        List<Booking> bookings = bookingRepository.findByShopId(shopId, pageable).getContent();
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by("bookingDate").descending().and(Sort.by("timeSlot").descending()));
 
-        List<Booking> filtered = bookings.stream()
-                .filter(b -> date == null || b.getBookingDate().equals(date))
-                .filter(b -> status == null || b.getStatus() == status)
-                .collect(Collectors.toList());
+        Page<Booking> bookingPage;
+        if (date != null && status != null) {
+            bookingPage = bookingRepository.findByShopIdAndBookingDateAndStatus(shopId, date, status, pageable);
+        } else if (date != null) {
+            bookingPage = bookingRepository.findByShopIdAndBookingDate(shopId, date, pageable);
+        } else if (status != null) {
+            bookingPage = bookingRepository.findByShopIdAndStatus(shopId, status, pageable);
+        } else {
+            bookingPage = bookingRepository.findByShopId(shopId, pageable);
+        }
 
-        return bookingMapper.toResponseList(filtered);
+        return new PagedBookingsResponse(
+                bookingMapper.toResponseList(bookingPage.getContent()),
+                bookingPage.getNumber(),
+                bookingPage.getSize(),
+                bookingPage.getTotalElements(),
+                bookingPage.getTotalPages(),
+                bookingPage.isLast()
+        );
     }
+
+    public record PagedBookingsResponse(
+            List<BookingResponse> bookings,
+            int page,
+            int size,
+            long totalElements,
+            int totalPages,
+            boolean last
+    ) {}
 
     @Transactional
     public BillResponse createBill(UUID shopId, UUID bookingId, BillRequest request, UUID currentUserId) {

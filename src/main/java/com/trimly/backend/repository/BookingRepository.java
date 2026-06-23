@@ -12,7 +12,11 @@ import java.util.UUID;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
-    Page<Booking> findByShopId(UUID shopId,  Pageable pageable);
+    Page<Booking> findByShopId(UUID shopId, Pageable pageable);
+    Page<Booking> findByShopIdAndBookingDate(UUID shopId, LocalDate bookingDate, Pageable pageable);
+    Page<Booking> findByShopIdAndStatus(UUID shopId, BookingStatus status, Pageable pageable);
+    Page<Booking> findByShopIdAndBookingDateAndStatus(UUID shopId, LocalDate bookingDate, BookingStatus status, Pageable pageable);
+
     List<Booking> findByShopIdAndBookingDate(UUID shopId, LocalDate bookingDate);
     List<Booking> findByCustomerId(UUID customerId);
     List<Booking> findByStaffIdAndBookingDate(UUID staffId, LocalDate bookingDate);
