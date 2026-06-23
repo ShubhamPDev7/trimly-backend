@@ -13,7 +13,10 @@ import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.ReviewRepository;
 import com.trimly.backend.repository.WalkInQueueEntryRepository;
+import com.trimly.backend.repository.ShopRepository;
+import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +29,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
@@ -34,6 +38,9 @@ public class ReviewService {
     private final BookingRepository bookingRepository;
     private final WalkInQueueEntryRepository walkInQueueEntryRepository;
     private final ShopAccessService shopAccessService;
+    private final EmailService emailService;
+    private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
 
     @Transactional
     public ReviewResponse createReview(UUID shopId, ReviewRequest request, UUID currentUserId) {
@@ -80,7 +87,21 @@ public class ReviewService {
                 .comment(request.comment())
                 .build();
 
-        return toResponse(reviewRepository.save(review));
+        ReviewResponse saved = toResponse(reviewRepository.save(review));
+
+
+        try {
+            var shop = shopRepository.findById(shopId).orElseThrow();
+            com.trimly.backend.entity.User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+            com.trimly.backend.entity.User reviewer = userRepository.findById(currentUserId).orElseThrow();
+            emailService.sendNewReviewToOwner(
+                    owner.getEmail(), owner.getName(), shop.getName(),
+                    reviewer.getName(), request.rating(), request.comment());
+        } catch (Exception e) {
+            log.error("Failed to send new review notification to owner: {}", e.getMessage());
+        }
+
+        return saved;
     }
 
     private ReviewResponse createWalkInReview(UUID shopId, ReviewRequest request, UUID currentUserId) {
@@ -111,7 +132,21 @@ public class ReviewService {
                 .comment(request.comment())
                 .build();
 
-        return toResponse(reviewRepository.save(review));
+        ReviewResponse saved = toResponse(reviewRepository.save(review));
+
+
+        try {
+            var shop = shopRepository.findById(shopId).orElseThrow();
+            com.trimly.backend.entity.User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+            com.trimly.backend.entity.User reviewer = userRepository.findById(currentUserId).orElseThrow();
+            emailService.sendNewReviewToOwner(
+                    owner.getEmail(), owner.getName(), shop.getName(),
+                    reviewer.getName(), request.rating(), request.comment());
+        } catch (Exception e) {
+            log.error("Failed to send new review notification to owner: {}", e.getMessage());
+        }
+
+        return saved;
     }
 
     public List<ReviewResponse> listReviews(UUID shopId, int page, int size) {

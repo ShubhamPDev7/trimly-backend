@@ -13,6 +13,7 @@ import com.trimly.backend.enums.WalkInStatus;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WalkInQueueService {
@@ -42,6 +44,9 @@ public class WalkInQueueService {
     private final ShopHoursService shopHoursService;
     private final BillRepository billRepository;
     private final LoyaltyService loyaltyService;
+    private final EmailService emailService;
+    private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
 
     @Transactional
     public WalkInQueueEntryResponse joinQueue(UUID shopId, WalkInJoinRequest request, User currentUser) {
@@ -114,6 +119,24 @@ public class WalkInQueueService {
             position++;
             if (e.getId().equals(savedEntry.getId())) break;
         }
+
+        if (customerId != null) {
+            try {
+                User customer = userRepository.findById(customerId).orElseThrow();
+                String shopName = shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop");
+                String serviceNames = services.stream()
+                        .map(ServiceItem::getName)
+                        .collect(Collectors.joining(", "));
+                WaitEstimate estimate = estimates.get(savedEntry.getId());
+                int waitMinutes = estimate != null ? (int) estimate.estimatedWaitMinutes() : 0;
+                emailService.sendQueueJoinConfirmation(
+                        customer.getEmail(), customer.getName(), shopName,
+                        position, waitMinutes, serviceNames);
+            } catch (Exception e) {
+                log.error("Failed to send queue join confirmation: {}", e.getMessage());
+            }
+        }
+
         return toResponse(savedEntry, estimates.get(savedEntry.getId()), position);
     }
 

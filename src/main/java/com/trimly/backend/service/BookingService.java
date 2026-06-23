@@ -17,7 +17,10 @@ import com.trimly.backend.repository.BillRepository;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.BookingServiceItemRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
+import com.trimly.backend.repository.ShopRepository;
+import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookingService {
@@ -40,6 +44,9 @@ public class BookingService {
     private final BillRepository billRepository;
     private final BookingMapper bookingMapper;
     private final LoyaltyService loyaltyService;
+    private final EmailService emailService;
+    private final UserRepository userRepository;
+    private final ShopRepository shopRepository;
 
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
@@ -115,6 +122,31 @@ public class BookingService {
 
         bookingServiceItemRepository.saveAll(bookingServices);
 
+        if (customerId != null) {
+            String serviceNames = services.stream()
+                    .map(ServiceItem::getName)
+                    .collect(Collectors.joining(", "));
+            try {
+                User customer = userRepository.findById(customerId).orElseThrow();
+                emailService.sendBookingConfirmationToCustomer(
+                        customer.getEmail(), customer.getName(),
+                        shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop"),
+                        request.bookingDate(), request.timeSlot(), serviceNames);
+            } catch (Exception e) {
+                log.error("Failed to send booking confirmation to customer: {}", e.getMessage());
+            }
+            try {
+                var shop = shopRepository.findById(shopId).orElseThrow();
+                User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+                User customer = userRepository.findById(customerId).orElseThrow();
+                emailService.sendNewBookingToOwner(
+                        owner.getEmail(), owner.getName(), customer.getName(),
+                        shop.getName(), request.bookingDate(), request.timeSlot(), serviceNames);
+            } catch (Exception e) {
+                log.error("Failed to send new booking notification to owner: {}", e.getMessage());
+            }
+        }
+
         return bookingMapper.toResponse(savedBooking, bookingServices, services);
     }
 
@@ -136,6 +168,25 @@ public class BookingService {
 
         booking.setStatus(request.status());
         Booking updatedBooking = bookingRepository.save(booking);
+
+        // Notify customer on accept/reject — only for registered customers
+        if (updatedBooking.getCustomerId() != null) {
+            try {
+                User customer = userRepository.findById(updatedBooking.getCustomerId()).orElseThrow();
+                String shopName = shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop");
+                if (request.status() == BookingStatus.ACCEPTED) {
+                    emailService.sendBookingAcceptedToCustomer(
+                            customer.getEmail(), customer.getName(), shopName,
+                            updatedBooking.getBookingDate(), updatedBooking.getTimeSlot());
+                } else if (request.status() == BookingStatus.REJECTED) {
+                    emailService.sendBookingRejectedToCustomer(
+                            customer.getEmail(), customer.getName(), shopName,
+                            updatedBooking.getBookingDate(), updatedBooking.getTimeSlot());
+                }
+            } catch (Exception e) {
+                log.error("Failed to send booking status email to customer: {}", e.getMessage());
+            }
+        }
 
         return bookingMapper.toResponse(updatedBooking);
     }
@@ -225,6 +276,21 @@ public class BookingService {
 
         booking.setStatus(BookingStatus.CANCELLED);
         Booking updated = bookingRepository.save(booking);
+
+
+        try {
+            User customer = userRepository.findById(currentUserId).orElseThrow();
+            var shop = shopRepository.findById(shopId).orElseThrow();
+            emailService.sendBookingCancelledToCustomer(
+                    customer.getEmail(), customer.getName(), shop.getName(),
+                    updated.getBookingDate(), updated.getTimeSlot());
+            User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+            emailService.sendBookingCancelledToOwner(
+                    owner.getEmail(), owner.getName(), customer.getName(),
+                    shop.getName(), updated.getBookingDate(), updated.getTimeSlot());
+        } catch (Exception e) {
+            log.error("Failed to send cancellation emails: {}", e.getMessage());
+        }
 
         return bookingMapper.toResponse(updated);
     }
