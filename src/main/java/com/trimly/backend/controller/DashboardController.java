@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/shops/{shopId}/dashboard")
+@RequestMapping("/api/v1/shops/{shopId}/dashboard")
 @RequiredArgsConstructor
 public class DashboardController {
 

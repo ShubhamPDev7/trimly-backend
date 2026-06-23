@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/shops/{shopId}/walk-in-queue")
+@RequestMapping("/api/v1/shops/{shopId}/walk-in-queue")
 @RequiredArgsConstructor
 public class WalkInQueueController {
 

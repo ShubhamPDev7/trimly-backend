@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/shops/{shopId}/loyalty")
+@RequestMapping("/api/v1/shops/{shopId}/loyalty")
 @RequiredArgsConstructor
 public class LoyaltyController {
 

@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/shops/{shopId}/bookings")
+@RequestMapping("/api/v1/shops/{shopId}/bookings")
 @RequiredArgsConstructor
 public class BookingController {
 

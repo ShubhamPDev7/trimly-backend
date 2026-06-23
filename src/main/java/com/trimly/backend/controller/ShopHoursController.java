@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/shops/{shopId}/hours")
+@RequestMapping("/api/v1/shops/{shopId}/hours")
 @RequiredArgsConstructor
 public class ShopHoursController {
 

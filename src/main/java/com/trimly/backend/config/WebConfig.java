@@ -15,10 +15,10 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/auth/login",
-                        "/api/auth/forgot-password",
-                        "/api/auth/register",
-                        "/api/shops/*/walk-in-queue");
+                .addPathPatterns("/api/v1/auth/login",
+                        "/api/v1/auth/forgot-password",
+                        "/api/v1/auth/register",
+                        "/api/v1/shops/*/walk-in-queue");
     }
 
 }

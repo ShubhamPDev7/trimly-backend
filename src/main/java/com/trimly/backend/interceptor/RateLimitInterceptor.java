@@ -30,15 +30,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         Duration window = null;
 
         if ("POST".equals(method)) {
-            if (uri.endsWith("/api/auth/login")) {
+            if (uri.endsWith("/api/v1/auth/login")) {
                 key = "rate:login:" + ip;
                 maxRequests = 10;
                 window = Duration.ofMinutes(15);
-            } else if (uri.endsWith("/api/auth/forgot-password")) {
+            } else if (uri.endsWith("/api/v1/auth/forgot-password")) {
                 key = "rate:forgot-password:" + ip;
                 maxRequests = 5;
                 window = Duration.ofHours(1);
-            } else if (uri.endsWith("/api/auth/register")) {
+            } else if (uri.endsWith("/api/v1/auth/register")) {
                 key = "rate:register:" + ip;
                 maxRequests = 5;
                 window = Duration.ofHours(1);
