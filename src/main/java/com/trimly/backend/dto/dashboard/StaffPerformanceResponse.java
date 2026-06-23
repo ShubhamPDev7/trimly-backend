@@ -7,6 +7,8 @@ public record StaffPerformanceResponse(
         UUID staffId,
         String staffName,
         long bookingsCompleted,
-        BigDecimal totalRevenue
+        BigDecimal totalRevenue,
+        Double averageRating,
+        long totalReviews
 ) {
 }

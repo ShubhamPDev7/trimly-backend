@@ -8,6 +8,7 @@ import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
 import com.trimly.backend.enums.BookingStatus;
 import com.trimly.backend.repository.BillRepository;
+import com.trimly.backend.repository.ReviewRepository;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
 import com.trimly.backend.repository.UserRepository;
@@ -30,6 +31,7 @@ public class DashboardService {
     private final UserRepository userRepository;
     private final ShopAccessService shopAccessService;
     private final ShopStaffRepository shopStaffRepository;
+    private final ReviewRepository reviewRepository;
 
     public DashboardSummaryResponse getSummary(UUID shopId, LocalDate startDate, LocalDate endDate, UUID currentUserId) {
         shopAccessService.verifyShopAccess(currentUserId, shopId);
@@ -95,11 +97,19 @@ public class DashboardService {
 
                     User user = usersById.get(staffId);
 
+                    Double avgRating = reviewRepository.findAverageRatingByStaffId(staffId, shopId);
+                    long reviewCount = reviewRepository.countByStaffId(staffId, shopId);
+                    Double roundedRating = avgRating != null
+                            ? Math.round(avgRating * 10.0) / 10.0
+                            : null;
+
                     return new StaffPerformanceResponse(
                             staffId,
                             user != null ? user.getName() : "Unknown",
                             staffBookings.size(),
-                            staffRevenue
+                            staffRevenue,
+                            roundedRating,
+                            reviewCount
                     );
                 })
                 .sorted(Comparator.comparing(StaffPerformanceResponse::totalRevenue).reversed())
