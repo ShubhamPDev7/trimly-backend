@@ -18,6 +18,7 @@ import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.BookingServiceItemRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
 import com.trimly.backend.repository.ShopRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -110,7 +111,12 @@ public class BookingService {
                 .status(BookingStatus.PENDING)
                 .build();
 
-        Booking savedBooking = bookingRepository.save(booking);
+        Booking savedBooking;
+        try {
+            savedBooking = bookingRepository.save(booking);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("This time slot is no longer available. Please choose a different time.");
+        }
 
         List<BookingServiceItem> bookingServices = services.stream()
                 .map(service -> BookingServiceItem.builder()
@@ -122,6 +128,7 @@ public class BookingService {
 
         bookingServiceItemRepository.saveAll(bookingServices);
 
+        // Email notifications — customer only (not guest bookings)
         if (customerId != null) {
             String serviceNames = services.stream()
                     .map(ServiceItem::getName)
