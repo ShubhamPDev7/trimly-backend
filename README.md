@@ -2,7 +2,7 @@
 
 Multi-shop barber/salon booking platform — backend API.
 
-Built with **Spring Boot 3 (Java 21, Maven)**, **PostgreSQL**, **Spring Security + JWT**.
+Built with **Spring Boot 3 (Java 21, Maven)**, **PostgreSQL**, **Redis**, **Spring Security + JWT**, emails via **Resend**.
 
 ---
 
@@ -13,15 +13,16 @@ Built with **Spring Boot 3 (Java 21, Maven)**, **PostgreSQL**, **Spring Security
 | Language / Build | Java 21, Maven |
 | Framework | Spring Boot 3.3.4 |
 | Database | PostgreSQL |
-| Migrations | Flyway |
+| Cache / Rate limiting | Redis |
+| Migrations | Flyway (V1–V13) |
 | ORM | Spring Data JPA (Hibernate) |
 | Auth | Spring Security, JWT (JJWT 0.12.x) |
+| Email | Resend (via REST) |
 | Validation | Jakarta Bean Validation |
 | Boilerplate reduction | Lombok |
 | Testing | JUnit 5, Mockito, AssertJ |
-| Image storage (planned) | Cloudinary |
 
-Frontend (not yet built): React + TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts — mobile-first responsive web app.
+Frontend (not yet built): React + TypeScript, Vite, Tailwind CSS, TanStack Query — mobile-first responsive web app.
 
 ---
 
@@ -37,6 +38,8 @@ Spring Security (JwtAuthFilter → SecurityContext)
    │
    ▼
 Controllers (thin) → Services (business logic) → Spring Data JPA → PostgreSQL
+                                                               → Redis (rate limiting)
+                                                               → Resend (email)
 ```
 
 ### Package structure
@@ -44,12 +47,13 @@ Controllers (thin) → Services (business logic) → Spring Data JPA → Postgre
 ```
 com.trimly.backend
 ├── entity/        # JPA entities
-├── enums/         # Role, ServiceCategory, BookingStatus, PaymentMode, PaymentStatus
+├── enums/         # Role, ServiceCategory, BookingStatus, WalkInStatus, PaymentMode, PaymentStatus
 ├── repository/    # Spring Data JPA repositories
 ├── service/       # Business logic + BookingMapper + ShopAccessService
 ├── controller/    # Thin REST controllers
-├── security/      # JWT util, auth filter, UserDetails, security config
-├── config/        # SecurityConfig, GlobalExceptionHandler
+├── security/      # JWT util, auth filter, UserDetails, SecurityConfig
+├── config/        # WebConfig, GlobalExceptionHandler
+├── interceptor/   # RateLimitInterceptor (Redis-backed)
 ├── dto/           # Request/response DTOs grouped by feature
 └── exception/     # ResourceNotFoundException, ShopAccessDeniedException
 ```
@@ -61,73 +65,97 @@ com.trimly.backend
 | Entity | Key fields | Notes |
 |---|---|---|
 | **User** | id, name, email, phone, passwordHash, role | role: OWNER / STAFF / CUSTOMER |
-| **Shop** | id, name, address, locality, ownerId | tenant root |
+| **Shop** | id, name, address, locality, timezone, ownerId | tenant root |
 | **ShopStaff** | id, shopId, userId, roleInShop | links a user to a shop |
-| **ServiceItem** | id, shopId, category, name, price, estTimeMinutes, imageUrl | category: MALE / FEMALE / CHILDREN |
-| **Booking** | id, shopId, customerId (nullable), staffId, guestName, guestPhone, bookingDate, timeSlot, status | guest fields used when staff books on behalf of a walk-in |
-| **BookingServiceItem** | id, bookingId, serviceId, priceAtBooking | snapshots price at time of booking |
-| **Bill** | id, shopId, bookingId, totalAmount, paymentMode, paymentStatus | 1:1 with Booking; only billable once COMPLETED |
+| **ShopHours** | id, shopId, dayOfWeek, openTime, closeTime, isOpen | per-day hours |
+| **ShopClosedDate** | id, shopId, date, reason | one-off closures |
+| **ServiceItem** | id, shopId, category, name, price, estTimeMinutes | soft-deletable |
+| **Booking** | id, shopId, customerId (nullable), staffId, guestName, guestPhone, bookingDate, timeSlot, status | guest fields for walk-in bookings by staff |
+| **BookingServiceItem** | id, bookingId, serviceId, priceAtBooking | snapshots price at booking time |
+| **Bill** | id, shopId, bookingId (nullable), walkInQueueEntryId (nullable), totalAmount, paymentMode, paymentStatus | covers both booking and walk-in billing |
+| **WalkInQueueEntry** | id, shopId, customerId (nullable), guestName, guestPhone, preferredStaffId, status | status: WAITING / IN_SERVICE / COMPLETED / CANCELLED / NO_SHOW |
+| **WalkInQueueServiceItem** | id, queueEntryId, serviceId, priceAtJoin | snapshots price at queue join |
+| **Review** | id, shopId, reviewerId, bookingId (nullable), walkInQueueEntryId (nullable), rating, comment, ownerReply, ownerRepliedAt | one review per booking or walk-in |
+| **LoyaltyAccount** | id, shopId, customerId, balance | per-customer per-shop points balance |
+| **LoyaltyTransaction** | id, shopId, customerId, billId, type (EARN/REDEEM), points, balanceAfter | full ledger |
+| **RefreshToken** | id, userId, token, expiresAt | persisted refresh tokens with reuse detection |
+| **PasswordResetToken** | id, userId, token, expiresAt | forgot-password flow |
 
 ---
 
 ## What's Built
 
-### Phase 1 — Foundation
-- Project skeleton (Maven, Java 21, Spring Boot 3.3.4)
-- All 7 entities + 5 enums
-- Repositories with shop-scoped query methods
-- Spring Security + JWT:
-  - `CustomUserDetails` / `CustomUserDetailsService`
-  - `JwtUtil` — generates/validates tokens; embeds `userId`, `role`, `shopIds` as claims
-  - `JwtAuthFilter` — authenticates each request from its Bearer token
-  - `SecurityConfig` — stateless sessions, public `/api/auth/**`
-- `GlobalExceptionHandler` — consistent JSON error responses, no stack traces exposed
-- **Auth**: `POST /api/auth/register`, `POST /api/auth/login`
-  - Self-registration blocked for `STAFF` role
-  - Generic error message on bad credentials (prevents user enumeration)
+### Auth
+- `POST /api/v1/auth/register` — STAFF self-registration blocked; generic error on bad credentials
+- `POST /api/v1/auth/login` — returns short-lived access token + refresh token
+- `POST /api/v1/auth/refresh` — rotates refresh token (reuse detection: old token invalidated on use)
+- `POST /api/v1/auth/forgot-password` — sends reset link via Resend
+- `POST /api/v1/auth/reset-password` — validates token, updates password
+- Rate limiting via Redis on login, register, forgot-password
 
-### Phase 2 — Shop & Services
-- `POST /api/shops` — creates shop, auto-enrolls creator as `ShopStaff` ("Owner"), re-issues JWT with new shopId
-- `ShopAccessService.verifyShopAccess(userId, shopId)` — tenant-isolation check used by all shop-scoped writes
-- **ServiceItem CRUD**: `POST/GET/PUT/DELETE /api/shops/{shopId}/services`
-  - Optional `?category=` filter on listing
-  - Update/delete verify the service belongs to the correct shop
+### Shop Management
+- Shop CRUD with soft delete
+- Staff add / remove (owner only)
+- Update shop profile (name, address, locality, timezone)
+- Shop hours per day of week + one-off closed dates
+- `ShopAccessService` — tenant isolation enforced on every shop-scoped write
 
-### Phase 3 — Booking
-- `POST /api/shops/{shopId}/bookings`:
-  - Staff → guest booking (`guestName`/`guestPhone` required)
-  - Customer → books for themselves (`customerId` = their own ID)
-  - Validates `staffId` belongs to the shop
-  - **Slot-conflict check**: same staff + date + timeslot blocked if status is `PENDING`, `ACCEPTED`, or `COMPLETED`
-  - Validates all `serviceIds` belong to this shop
-  - Snapshots each service price into `BookingServiceItem.priceAtBooking`
-- `BookingStatus.canTransitionTo(...)` — enum-level state machine:
-  - `PENDING` → `ACCEPTED` / `REJECTED` / `CANCELLED`
-  - `ACCEPTED` → `COMPLETED` / `CANCELLED`
-  - `REJECTED`, `COMPLETED`, `CANCELLED` → terminal
-- `PATCH /api/shops/{shopId}/bookings/{bookingId}/status` — enforces transition rules
-- `GET /api/shops/{shopId}/bookings` — optional `?date=` and `?status=` filters
-- `GET /api/customers/me/bookings` — customer's own bookings; identity from JWT, never a path param
+### Services
+- Full CRUD for service items (category: MALE / FEMALE / CHILDREN)
+- Soft delete, optional `?category=` filter on listing
 
-### Phase 4 — Billing & Dashboard
-- `POST /api/shops/{shopId}/bookings/{bookingId}/bill`:
-  - Only allowed on `COMPLETED` bookings
-  - Blocks double-billing
-  - Total recalculated server-side from `BookingServiceItem` (never trusts client-sent amount)
-- `GET /api/shops/{shopId}/dashboard/summary?startDate=&endDate=`:
-  - Total revenue, total bookings, daily revenue breakdown, top customers by spend
-- `GET /api/shops/{shopId}/dashboard/staff-performance?startDate=&endDate=`:
-  - Per-staff completed bookings and revenue, sorted by revenue descending
+### Bookings
+- Staff → guest booking (`guestName` / `guestPhone` required)
+- Customer → self-booking (`customerId` = JWT identity)
+- Slot-conflict detection (same staff + date + timeslot blocked unless REJECTED/CANCELLED)
+- Enum-level state machine: `PENDING → ACCEPTED / REJECTED`, `ACCEPTED → COMPLETED / CANCELLED`
+- Customer can cancel their own PENDING or ACCEPTED booking
+- Email notifications: confirmation to customer + owner on create; status updates to customer on accept/reject; cancellation to both on cancel
 
-### Phase 5 — Service Layer & Customer Endpoints
-- Extracted full service layer: `BookingService`, `ShopService`, `ServiceItemService`, `DashboardService`, `CustomerService`
-- All controllers are thin — extract userId, delegate to service, return response
-- Customer endpoints: `GET /PUT /DELETE /api/customers/me` — profile view, update, soft-delete
+### Billing
+- Booking billing: only on COMPLETED bookings, double-bill prevented, total recalculated server-side
+- Walk-in billing: same protection, tied to WalkInQueueEntry
+- Loyalty points processed at bill creation (see below)
 
-### Phase 6 — Testing
-- **46 unit tests** across the full service layer using JUnit 5 + Mockito
-- **90% line coverage, 100% class coverage** across all 7 service classes
-- Covers: slot conflict detection, invalid status transitions, double-billing prevention, cross-tenant access, soft-delete guards, staff ownership checks, dashboard aggregation, BookingMapper price totals
+### Walk-in Queue
+- Customer joins queue self-service or staff adds a guest
+- Predictive wait time algorithm based on shop hours + service durations + queue position
+- Statuses: WAITING → IN_SERVICE → COMPLETED / CANCELLED / NO_SHOW
+- Email confirmation to customer on queue join (position + estimated wait)
+
+### Loyalty Points
+- **Earn**: 1 point per ₹10 spent (on finalAmount after any discount), awarded on every bill
+- **Redeem**: `redeemPoints: true` in bill request — applies all available points as discount (1 point = ₹1 off), capped at 50% of bill value
+- Per-customer per-shop balance in `loyalty_accounts`; full ledger in `loyalty_transactions`
+- Works for both booking bills and walk-in bills
+- Guest bookings/walk-ins (no customerId) earn no points
+
+### Ratings & Reviews
+- One review per completed booking or walk-in (prevents fake reviews)
+- Rating 1–5, optional comment
+- Shop owner can reply publicly; reply can only be set once
+- Aggregate average rating computed live (never stale)
+- Email to shop owner when a new review is posted
+
+### Dashboard
+- Revenue summary with daily breakdown and top customers by spend
+- Staff performance: completed bookings + revenue per staff member
+
+### Customer Endpoints
+- Profile view, update, soft-delete
+- Own bookings list
+
+### Email Notifications (Resend)
+All emails are fire-and-forget — failures are logged but never propagate to the caller.
+
+| Trigger | Customer | Owner |
+|---|---|---|
+| Customer creates booking | ✅ Booking received | ✅ New booking request |
+| Staff accepts booking | ✅ Booking confirmed | — |
+| Staff rejects booking | ✅ Booking declined | — |
+| Customer cancels booking | ✅ Cancellation confirmed | ✅ Slot freed |
+| Customer joins walk-in queue | ✅ Queue position + wait time | — |
+| New review posted | — | ✅ New review with rating |
 
 ---
 
@@ -135,46 +163,46 @@ com.trimly.backend
 
 - Passwords hashed with BCrypt
 - JWTs stateless, signed with HMAC-SHA, secret via `JWT_SECRET` env var
+- Short-lived access tokens (15 min default) + long-lived refresh tokens (30 days)
+- Refresh token reuse detection — reuse invalidates the token family
 - `shop_id` never trusted from client input for writes — always derived from `ShopStaff` membership
-- Update/delete endpoints verify resource belongs to the correct shop (prevents cross-tenant ID guessing)
-- `application.properties` and `target/` excluded from git; `.example` file committed as setup template
-- JWT signing secret rotated after original commit history exposure
+- All shop-scoped writes verify resource belongs to the correct shop (prevents cross-tenant ID guessing)
+- Redis-backed rate limiting on auth endpoints
+- `application.properties` excluded from git
 
 ---
 
 ## Known Tech Debt
 
-1. ~~Booking → DTO mapping duplicated across controllers~~ — **Fixed.** Extracted into `BookingMapper`.
-2. ~~No DB migrations~~ — **Fixed.** Flyway added (V1–V5).
-3. ~~Any staff could add other staff~~ — **Fixed.** Restricted to shop owner via `verifyShopOwner()`.
-4. ~~Top-customer aggregation grouped by name string~~ — **Fixed.** Now keys on `customerId`/`guestPhone`.
-5. ~~Case-sensitive email matching~~ — **Fixed.** Email normalized to lowercase everywhere.
-6. **Booking slot-conflict race condition** (TOCTOU) — concurrent requests can both pass the check before either saves. No DB-level unique constraint yet.
-7. **Slot duration** — `Booking.timeSlot` is a point in time with no end time/duration.
-8. **No remove-staff endpoint** — staff can be added but not removed.
-9. `ShopStaff.roleInShop` is a free-text string — owner check does exact match on `"Owner"`. Should be an enum.
-10. **Dashboard top-customer aggregation** — in-memory grouping with per-booking `User` lookups instead of SQL aggregation. Fine at current scale.
+1. **Booking slot-conflict race condition** (TOCTOU) — concurrent requests can both pass the conflict check before either saves. Needs a `UNIQUE(staff_id, booking_date, time_slot)` partial index excluding REJECTED/CANCELLED.
+2. **Slot duration** — `Booking.timeSlot` is a point in time with no end time. Overlapping services for the same staff member aren't detected.
+3. `ShopStaff.roleInShop` is a free-text string — owner check does exact match on `"Owner"`. Should be an enum.
+4. **Dashboard top-customer aggregation** — in-memory grouping with per-booking `User` lookups. Fine at current scale, needs SQL aggregation at scale.
+5. **Walk-in billing loyalty** — loyalty points on walk-in bills require a registered customer (`customerId`). Guests earn nothing (by design, but worth noting).
 
 ---
 
 ## Local Setup
 
-Requires Java 21 and PostgreSQL.
+Requires Java 21, PostgreSQL, and Redis.
 
 ```bash
 createdb trimly
 cp src/main/resources/application.properties.example src/main/resources/application.properties
 ```
 
-Fill in:
+Fill in your `application.properties`:
 
 ```properties
 DB_URL=jdbc:postgresql://localhost:5432/trimly
 DB_USERNAME=postgres
 DB_PASSWORD=your_password
-JWT_SECRET=a_long_random_secret_string
-JWT_EXPIRATION_MS=86400000
+JWT_SECRET=a_long_random_secret_at_least_32_chars
+RESEND_API_KEY=re_your_resend_key
+FRONTEND_RESET_PASSWORD_URL=http://localhost:5173/reset-password
 ```
+
+Redis must be running locally on the default port (6379) or configure via `REDIS_HOST` / `REDIS_PORT`.
 
 Run:
 
@@ -182,45 +210,105 @@ Run:
 mvn spring-boot:run
 ```
 
-Flyway applies all migrations automatically on startup.
+Flyway applies all 13 migrations automatically on startup.
 
 ### Quick smoke test
 
 ```bash
 # Register
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"name":"Test Owner","email":"owner@example.com","phone":"9999999999","password":"password123","role":"OWNER"}'
 
 # Create a shop (use token from above)
-curl -X POST http://localhost:8080/api/shops \
+curl -X POST http://localhost:8080/api/v1/shops \
   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"name":"My Shop","address":"123 Main St","locality":"Pune"}'
+  -d '{"name":"My Shop","address":"123 Main St","locality":"Mumbai","timezone":"Asia/Kolkata"}'
 ```
 
 ---
 
 ## API Endpoints
 
+All endpoints are prefixed with `/api/v1`.
+
+### Auth
+| Method | Path | Auth | Notes |
+|---|---|---|---
+| POST | `/auth/register` | Public | STAFF role blocked |
+| POST | `/auth/login` | Public | Returns access + refresh token |
+| POST | `/auth/refresh` | Public | Rotates refresh token |
+| POST | `/auth/forgot-password` | Public | Sends reset email |
+| POST | `/auth/reset-password` | Public | Validates token, sets new password |
+
+### Shops
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/api/auth/register` | Public | STAFF self-registration blocked |
-| POST | `/api/auth/login` | Public | |
-| POST | `/api/shops` | Authenticated | Re-issues JWT with new shopId |
-| POST | `/api/shops/{shopId}/staff` | Shop owner | |
-| GET | `/api/shops/{shopId}/staff` | Shop staff | |
-| DELETE | `/api/shops/{shopId}` | Shop owner | Soft delete |
-| POST | `/api/shops/{shopId}/services` | Shop staff | |
-| GET | `/api/shops/{shopId}/services` | Authenticated | `?category=` optional |
-| PUT | `/api/shops/{shopId}/services/{serviceId}` | Shop staff | |
-| DELETE | `/api/shops/{shopId}/services/{serviceId}` | Shop staff | |
-| POST | `/api/shops/{shopId}/bookings` | Authenticated | Customer or staff (guest) booking |
-| GET | `/api/shops/{shopId}/bookings` | Shop staff | `?date=`, `?status=` optional |
-| PATCH | `/api/shops/{shopId}/bookings/{bookingId}/status` | Shop staff | Enforces state machine |
-| POST | `/api/shops/{shopId}/bookings/{bookingId}/bill` | Shop staff | Booking must be COMPLETED |
-| GET | `/api/shops/{shopId}/dashboard/summary` | Shop staff | `?startDate=&endDate=` required |
-| GET | `/api/shops/{shopId}/dashboard/staff-performance` | Shop staff | `?startDate=&endDate=` required |
-| GET | `/api/customers/me` | Authenticated | Own profile |
-| PUT | `/api/customers/me` | Authenticated | Update name/phone |
-| DELETE | `/api/customers/me` | Authenticated | Soft-delete account |
-| GET | `/api/customers/me/bookings` | Authenticated | Own bookings only |
+| POST | `/shops` | Authenticated | Re-issues JWT with new shopId |
+| GET | `/shops/{shopId}` | Authenticated | |
+| PUT | `/shops/{shopId}` | Owner | Update name/address/locality/timezone |
+| DELETE | `/shops/{shopId}` | Owner | Soft delete |
+| POST | `/shops/{shopId}/staff` | Owner | Add staff |
+| GET | `/shops/{shopId}/staff` | Shop staff | |
+| DELETE | `/shops/{shopId}/staff/{staffUserId}` | Owner | Remove staff |
+| POST | `/shops/{shopId}/hours` | Owner | Set shop hours |
+| GET | `/shops/{shopId}/hours` | Authenticated | |
+| POST | `/shops/{shopId}/hours/closed-dates` | Owner | Add closed date |
+| GET | `/shops/{shopId}/hours/closed-dates` | Authenticated | |
+
+### Services
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/shops/{shopId}/services` | Shop staff | |
+| GET | `/shops/{shopId}/services` | Authenticated | `?category=` optional |
+| PUT | `/shops/{shopId}/services/{serviceId}` | Shop staff | |
+| DELETE | `/shops/{shopId}/services/{serviceId}` | Shop staff | Soft delete |
+
+### Bookings
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/shops/{shopId}/bookings` | Authenticated | Customer or staff (guest) booking |
+| GET | `/shops/{shopId}/bookings` | Shop staff | `?date=`, `?status=` optional |
+| PATCH | `/shops/{shopId}/bookings/{bookingId}/status` | Shop staff | Enforces state machine |
+| PATCH | `/shops/{shopId}/bookings/{bookingId}/cancel` | Customer | Own bookings only |
+| POST | `/shops/{shopId}/bookings/{bookingId}/bill` | Shop staff | Booking must be COMPLETED |
+
+### Walk-in Queue
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/shops/{shopId}/walk-in-queue` | Authenticated | Customer self-join or staff adds guest |
+| GET | `/shops/{shopId}/walk-in-queue` | Shop staff | Current queue |
+| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/start` | Shop staff | Mark IN_SERVICE |
+| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/complete` | Shop staff | Mark COMPLETED |
+| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/cancel` | Shop staff | Mark CANCELLED |
+| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/no-show` | Shop staff | Mark NO_SHOW |
+| POST | `/shops/{shopId}/walk-in-queue/{entryId}/bill` | Shop staff | Entry must be COMPLETED |
+
+### Reviews
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/shops/{shopId}/reviews` | Authenticated | One per completed booking or walk-in |
+| GET | `/shops/{shopId}/reviews` | Public | `?page=&size=` |
+| GET | `/shops/{shopId}/reviews/summary` | Public | Average rating + total count |
+| POST | `/shops/{shopId}/reviews/{reviewId}/reply` | Owner | One reply per review |
+
+### Loyalty
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/shops/{shopId}/loyalty/me` | Authenticated | Own balance at this shop |
+| GET | `/shops/{shopId}/loyalty/me/transactions` | Authenticated | Own transaction history |
+| GET | `/shops/{shopId}/loyalty/customer/{customerId}` | Shop staff | View customer balance |
+
+### Dashboard
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/shops/{shopId}/dashboard/summary` | Shop staff | `?startDate=&endDate=` required |
+| GET | `/shops/{shopId}/dashboard/staff-performance` | Shop staff | `?startDate=&endDate=` required |
+
+### Customer
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/customers/me` | Authenticated | Own profile |
+| PUT | `/customers/me` | Authenticated | Update name/phone |
+| DELETE | `/customers/me` | Authenticated | Soft-delete account |
+| GET | `/customers/me/bookings` | Authenticated | Own booking history |
