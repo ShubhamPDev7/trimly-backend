@@ -137,6 +137,20 @@ public class WalkInQueueService {
             }
         }
 
+        try {
+            Shop shop = shopRepository.findById(shopId).orElseThrow();
+            User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+            String customerDisplayName = (guestName != null) ? guestName : userRepository.findById(customerId).map(User::getName).orElse("A customer");
+            String serviceNames = services.stream().map(ServiceItem::getName).collect(Collectors.joining(", "));
+            WaitEstimate estimate = estimates.get(savedEntry.getId());
+            int waitMinutes = estimate != null ? (int) estimate.estimatedWaitMinutes() : 0;
+            emailService.sendWalkInOwnerNotification(
+                    owner.getEmail(), owner.getName(), shop.getName(),
+                    customerDisplayName, position, waitMinutes, serviceNames);
+        } catch (Exception e) {
+            log.error("Failed to send walk-in owner notification: {}", e.getMessage());
+        }
+
         return toResponse(savedEntry, estimates.get(savedEntry.getId()), position);
     }
 

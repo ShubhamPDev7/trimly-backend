@@ -144,6 +144,25 @@ public class EmailService {
 
 
 
+    public void sendWalkInOwnerNotification(
+            String toEmail, String ownerName, String shopName,
+            String customerName, int position, int estimatedWaitMinutes, String services) {
+        String waitText = estimatedWaitMinutes > 0
+                ? estimatedWaitMinutes + " min estimated wait"
+                : "Wait time calculating…";
+        send(toEmail,
+                "New walk-in at " + shopName,
+                "<p>Hi " + ownerName + ",</p>"
+                        + "<p><strong>" + customerName + "</strong> just joined your walk-in queue.</p>"
+                        + "<table style='border-collapse:collapse;margin-top:12px'>"
+                        + row("Queue position", "#" + position)
+                        + row("Services", services)
+                        + row("Estimated wait", waitText)
+                        + "</table>"
+                        + "<p>— Trimly</p>"
+        );
+    }
+
     public void sendQueueJoinConfirmation(
             String toEmail, String customerName, String shopName,
             int position, int estimatedWaitMinutes, String services) {
