@@ -2,6 +2,7 @@ package com.trimly.backend.service;
 
 import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
+import com.trimly.backend.enums.StaffRole;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.exception.ShopAccessDeniedException;
 import com.trimly.backend.repository.ShopRepository;
@@ -92,7 +93,7 @@ class ShopAccessServiceTest {
     @Test
     void verifyShopOwner_notOwner_throwsException() {
         ShopStaff staffLink = new ShopStaff();
-        staffLink.setRoleInShop("Barber");
+        staffLink.setRoleInShop(StaffRole.STAFF);
 
         when(shopRepository.findById(shopId)).thenReturn(Optional.of(shop));
         when(shopStaffRepository.findByShopIdAndUserId(shopId, userId)).thenReturn(Optional.of(staffLink));
@@ -105,7 +106,7 @@ class ShopAccessServiceTest {
     @Test
     void verifyShopOwner_isOwner_doesNotThrow() {
         ShopStaff staffLink = new ShopStaff();
-        staffLink.setRoleInShop("Owner");
+        staffLink.setRoleInShop(StaffRole.OWNER);
 
         when(shopRepository.findById(shopId)).thenReturn(Optional.of(shop));
         when(shopStaffRepository.findByShopIdAndUserId(shopId, userId)).thenReturn(Optional.of(staffLink));

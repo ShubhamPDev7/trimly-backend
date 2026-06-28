@@ -289,18 +289,15 @@ class BookingServiceTest {
                 .id(UUID.randomUUID()).shopId(shopId)
                 .bookingDate(LocalDate.now()).status(BookingStatus.PENDING).build();
 
-        Booking completedBooking = Booking.builder()
-                .id(UUID.randomUUID()).shopId(shopId)
-                .bookingDate(LocalDate.now()).status(BookingStatus.COMPLETED).build();
-
         doNothing().when(shopAccessService).verifyShopAccess(currentUserId, shopId);
-        when(bookingRepository.findByShopId(eq(shopId), any())).thenReturn(
-                new org.springframework.data.domain.PageImpl<>(List.of(pendingBooking, completedBooking))
-        );
-        when(bookingMapper.toResponseList(List.of(pendingBooking))).thenReturn(List.of(mock(BookingResponse.class)));
+        when(bookingRepository.findByShopIdAndStatus(eq(shopId), eq(BookingStatus.PENDING), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(pendingBooking)));
+        when(bookingMapper.toResponseList(List.of(pendingBooking)))
+                .thenReturn(List.of(mock(BookingResponse.class)));
 
-        List<BookingResponse> response = bookingService.listShopBookings(shopId, null, BookingStatus.PENDING, 0, 10, currentUserId);
+        BookingService.PagedBookingsResponse response =
+                bookingService.listShopBookings(shopId, null, BookingStatus.PENDING, 0, 10, currentUserId);
 
-        assertThat(response).hasSize(1);
+        assertThat(response.bookings()).hasSize(1);
     }
 }

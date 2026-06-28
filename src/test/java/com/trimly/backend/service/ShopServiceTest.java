@@ -6,6 +6,7 @@ import com.trimly.backend.entity.Shop;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
 import com.trimly.backend.enums.Role;
+import com.trimly.backend.enums.StaffRole;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
@@ -65,7 +66,7 @@ class ShopServiceTest {
 
     @Test
     void addStaff_userNotFound_throwsException() {
-        AddStaffRequest request = new AddStaffRequest("notfound@test.com", "Barber");
+        AddStaffRequest request = new AddStaffRequest("notfound@test.com", StaffRole.STAFF);
 
         doNothing().when(shopAccessService).verifyShopOwner(ownerId, shopId);
         when(userRepository.findByEmail("notfound@test.com")).thenReturn(Optional.empty());
@@ -81,7 +82,7 @@ class ShopServiceTest {
         staffUser.setId(UUID.randomUUID());
         staffUser.setEmail("staff@test.com");
 
-        AddStaffRequest request = new AddStaffRequest("staff@test.com", "Barber");
+        AddStaffRequest request = new AddStaffRequest("staff@test.com", StaffRole.STAFF);
 
         doNothing().when(shopAccessService).verifyShopOwner(ownerId, shopId);
         when(userRepository.findByEmail("staff@test.com")).thenReturn(Optional.of(staffUser));
@@ -99,7 +100,7 @@ class ShopServiceTest {
         staffUser.setName("Ravi");
         staffUser.setEmail("ravi@test.com");
 
-        AddStaffRequest request = new AddStaffRequest("ravi@test.com", "Barber");
+        AddStaffRequest request = new AddStaffRequest("ravi@test.com", StaffRole.STAFF);
 
         doNothing().when(shopAccessService).verifyShopOwner(ownerId, shopId);
         when(userRepository.findByEmail("ravi@test.com")).thenReturn(Optional.of(staffUser));
@@ -109,7 +110,7 @@ class ShopServiceTest {
         ShopStaffResponse response = shopService.addStaff(shopId, request, ownerId);
 
         assertThat(response.name()).isEqualTo("Ravi");
-        assertThat(response.roleInShop()).isEqualTo("Barber");
+        assertThat(response.roleInShop()).isEqualTo(StaffRole.STAFF);
     }
 
     @Test
@@ -143,7 +144,7 @@ class ShopServiceTest {
 
         ShopStaff staffLink = new ShopStaff();
         staffLink.setUserId(staffUserId);
-        staffLink.setRoleInShop("Barber");
+        staffLink.setRoleInShop(StaffRole.STAFF);
 
         User staffUser = new User();
         staffUser.setId(staffUserId);
@@ -158,7 +159,7 @@ class ShopServiceTest {
 
         assertThat(response).hasSize(1);
         assertThat(response.get(0).name()).isEqualTo("Amit");
-        assertThat(response.get(0).roleInShop()).isEqualTo("Barber");
+        assertThat(response.get(0).roleInShop()).isEqualTo(StaffRole.STAFF);
     }
 
     @Test
@@ -176,7 +177,7 @@ class ShopServiceTest {
         ShopStaff ownerLink = ShopStaff.builder()
                 .shopId(shopId)
                 .userId(ownerId)
-                .roleInShop("Owner")
+                .roleInShop(StaffRole.OWNER)
                 .build();
 
         when(shopRepository.save(any())).thenReturn(savedShop);

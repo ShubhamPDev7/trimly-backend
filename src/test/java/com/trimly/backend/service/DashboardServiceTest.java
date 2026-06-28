@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.trimly.backend.repository.ReviewRepository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -38,6 +39,7 @@ class DashboardServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private ShopAccessService shopAccessService;
     @Mock private ShopStaffRepository shopStaffRepository;
+    @Mock private ReviewRepository reviewRepository;
 
     @InjectMocks
     private DashboardService dashboardService;
