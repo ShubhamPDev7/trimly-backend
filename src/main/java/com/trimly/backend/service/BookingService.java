@@ -55,6 +55,7 @@ public class BookingService {
     private final BookingMapper bookingMapper;
     private final LoyaltyService loyaltyService;
     private final EmailService emailService;
+    private final FcmService fcmService;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
     private final ShopHoursRepository shopHoursRepository;
@@ -146,6 +147,7 @@ public class BookingService {
                     .collect(Collectors.joining(", "));
             try {
                 User customer = userRepository.findById(customerId).orElseThrow();
+                fcmService.sendToUser(customerId, "Booking Confirmed", "Your booking has been received and is pending confirmation.");
                 emailService.sendBookingConfirmationToCustomer(
                         customer.getEmail(), customer.getName(),
                         shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop"),
@@ -193,10 +195,12 @@ public class BookingService {
                 User customer = userRepository.findById(updatedBooking.getCustomerId()).orElseThrow();
                 String shopName = shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop");
                 if (request.status() == BookingStatus.ACCEPTED) {
+                    fcmService.sendToUser(booking.getCustomerId(), "Booking Accepted", "Your booking has been accepted!");
                     emailService.sendBookingAcceptedToCustomer(
                             customer.getEmail(), customer.getName(), shopName,
                             updatedBooking.getBookingDate(), updatedBooking.getTimeSlot());
                 } else if (request.status() == BookingStatus.REJECTED) {
+                    fcmService.sendToUser(booking.getCustomerId(), "Booking Rejected", "Your booking was not accepted. Please try another slot.");
                     emailService.sendBookingRejectedToCustomer(
                             customer.getEmail(), customer.getName(), shopName,
                             updatedBooking.getBookingDate(), updatedBooking.getTimeSlot());
@@ -378,6 +382,7 @@ public class BookingService {
         try {
             User customer = userRepository.findById(currentUserId).orElseThrow();
             var shop = shopRepository.findById(shopId).orElseThrow();
+            fcmService.sendToUser(booking.getCustomerId(), "Booking Cancelled", "Your booking has been cancelled.");
             emailService.sendBookingCancelledToCustomer(
                     customer.getEmail(), customer.getName(), shop.getName(),
                     updated.getBookingDate(), updated.getTimeSlot());
