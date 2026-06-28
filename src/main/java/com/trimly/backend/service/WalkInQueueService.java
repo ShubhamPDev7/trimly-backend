@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.trimly.backend.util.Sanitizer;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,8 +64,8 @@ public class WalkInQueueService {
                         "guestName and guestPhone are required when staff adds a walk-in on behalf of a customer.");
             }
             customerId = null;
-            guestName = request.guestName();
-            guestPhone = request.guestPhone();
+            guestName = Sanitizer.clean(request.guestName());
+            guestPhone = Sanitizer.clean(request.guestPhone());
         } else {
             customerId = currentUser.getId();
             guestName = null;

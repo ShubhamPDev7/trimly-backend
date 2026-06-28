@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import com.trimly.backend.util.Sanitizer;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -84,7 +85,7 @@ public class ReviewService {
                 .reviewerId(currentUserId)
                 .bookingId(request.bookingId())
                 .rating(request.rating())
-                .comment(request.comment())
+                .comment(Sanitizer.clean(request.comment()))
                 .build();
 
         ReviewResponse saved = toResponse(reviewRepository.save(review));
@@ -129,7 +130,7 @@ public class ReviewService {
                 .reviewerId(currentUserId)
                 .walkInQueueEntryId(request.walkInQueueEntryId())
                 .rating(request.rating())
-                .comment(request.comment())
+                .comment(Sanitizer.clean(request.comment()))
                 .build();
 
         ReviewResponse saved = toResponse(reviewRepository.save(review));
@@ -176,7 +177,7 @@ public class ReviewService {
             throw new IllegalArgumentException("You have already replied to this review.");
         }
 
-        review.setOwnerReply(request.reply());
+        review.setOwnerReply(Sanitizer.clean(request.reply()));
         review.setOwnerRepliedAt(Instant.now());
 
         ReviewResponse saved = toResponse(reviewRepository.save(review));

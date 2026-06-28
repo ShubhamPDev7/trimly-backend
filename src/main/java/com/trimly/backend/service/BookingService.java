@@ -29,6 +29,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.trimly.backend.util.Sanitizer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -66,8 +67,8 @@ public class BookingService {
                         "guestName and guestPhone are required when staff creates a booking on behalf of a customer.");
             }
             customerId = null;
-            guestName = request.guestName();
-            guestPhone = request.guestPhone();
+            guestName = Sanitizer.clean(request.guestName());
+            guestPhone = Sanitizer.clean(request.guestPhone());
         } else {
             customerId = currentUser.getId();
             guestName = null;
