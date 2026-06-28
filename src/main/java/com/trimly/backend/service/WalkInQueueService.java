@@ -178,6 +178,50 @@ public class WalkInQueueService {
         return responses;
     }
 
+    public QueuePositionSnapshot getQueuePosition(UUID shopId, UUID entryId) {
+        WalkInQueueEntry entry = walkInQueueEntryRepository.findById(entryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Queue entry not found."));
+
+        if (!entry.getShopId().equals(shopId)) {
+            throw new ResourceNotFoundException("Queue entry not found.");
+        }
+
+        if (entry.getStatus() == WalkInStatus.COMPLETED || entry.getStatus() == WalkInStatus.CANCELLED
+                || entry.getStatus() == WalkInStatus.NO_SHOW) {
+            return new QueuePositionSnapshot(entryId, shopId, entry.getStatus(), null, null, null);
+        }
+
+        if (entry.getStatus() == WalkInStatus.IN_PROGRESS) {
+            return new QueuePositionSnapshot(entryId, shopId, entry.getStatus(), null, null, null);
+        }
+
+        List<WalkInQueueEntry> waitingEntries = walkInQueueEntryRepository
+                .findByShopIdAndStatusOrderByJoinedAtAsc(shopId, WalkInStatus.WAITING);
+
+        int position = 0;
+        for (WalkInQueueEntry e : waitingEntries) {
+            position++;
+            if (e.getId().equals(entryId)) break;
+        }
+
+        Map<UUID, WaitEstimate> estimates = calculateWaitEstimates(shopId);
+        WaitEstimate estimate = estimates.get(entryId);
+
+        Long waitMinutes = estimate != null ? estimate.estimatedWaitMinutes() : null;
+        Instant estimatedStartAt = estimate != null ? estimate.estimatedStartAt() : null;
+
+        return new QueuePositionSnapshot(entryId, shopId, entry.getStatus(), position, waitMinutes, estimatedStartAt);
+    }
+
+    public record QueuePositionSnapshot(
+            UUID entryId,
+            UUID shopId,
+            WalkInStatus status,
+            Integer position,
+            Long estimatedWaitMinutes,
+            Instant estimatedStartAt
+    ) {}
+
     @Transactional
     public WalkInQueueEntryResponse startQueueEntry(UUID shopId, UUID entryId, WalkInStartRequest request, UUID currentUserId) {
         shopAccessService.verifyShopAccess(currentUserId, shopId);
@@ -452,7 +496,6 @@ public class WalkInQueueService {
                 }
             }
 
-
             Instant slotEnd = cursor.plusSeconds(durationMinutes * 60);
             if (!slotEnd.isAfter(closingTime)) {
                 return cursor;
@@ -535,5 +578,4 @@ public class WalkInQueueService {
                 bill.getRazorpayPaymentId()
         );
     }
-
 }
