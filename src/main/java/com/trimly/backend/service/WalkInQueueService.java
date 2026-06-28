@@ -530,7 +530,9 @@ public class WalkInQueueService {
                 bill.getTotalAmount(),
                 bill.getPaymentMode(),
                 bill.getPaymentStatus(),
-                bill.getCreatedAt()
+                bill.getCreatedAt(),
+                bill.getRazorpayOrderId(),
+                bill.getRazorpayPaymentId()
         );
     }
 

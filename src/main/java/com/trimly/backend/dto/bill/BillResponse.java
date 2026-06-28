@@ -14,6 +14,8 @@ public record BillResponse(
         BigDecimal totalAmount,
         PaymentMode paymentMode,
         PaymentStatus paymentStatus,
-        Instant createdAt
+        Instant createdAt,
+        String razorpayOrderId,
+        String razorpayPaymentId
 ) {
 }

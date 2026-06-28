@@ -59,6 +59,12 @@ public class Bill implements Serializable {
     @Column(name = "walk_in_queue_entry_id")
     private UUID walkInQueueEntryId;
 
+    @Column(name = "razorpay_order_id", unique = true)
+    private String razorpayOrderId;
+
+    @Column(name = "razorpay_payment_id")
+    private String razorpayPaymentId;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();

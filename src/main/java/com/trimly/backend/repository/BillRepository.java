@@ -15,4 +15,6 @@ public interface BillRepository extends JpaRepository<Bill, UUID> {
     List<Bill> findByShopIdAndCreatedAtBetween(UUID shopId, Instant start, Instant end);
     Optional<Bill> findByWalkInQueueEntryId(UUID walkInQueueEntryId);
 
+    Optional<Bill> findByRazorpayOrderId(String razorpayOrderId);
+
 }

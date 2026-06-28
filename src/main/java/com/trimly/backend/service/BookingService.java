@@ -12,6 +12,7 @@ import com.trimly.backend.entity.BookingServiceItem;
 import com.trimly.backend.entity.ServiceItem;
 import com.trimly.backend.entity.User;
 import com.trimly.backend.enums.BookingStatus;
+import com.trimly.backend.enums.PaymentMode;
 import com.trimly.backend.enums.PaymentStatus;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.BillRepository;
@@ -269,17 +270,26 @@ public class BookingService {
                 .map(BookingServiceItem::getPriceAtBooking)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // Razorpay payments are async — bill starts PENDING until webhook confirms capture
+        PaymentStatus initialStatus = request.paymentMode() == PaymentMode.RAZORPAY
+                ? PaymentStatus.PENDING
+                : PaymentStatus.PAID;
+
         Bill bill = Bill.builder()
                 .shopId(shopId)
                 .bookingId(bookingId)
                 .totalAmount(total)
                 .paymentMode(request.paymentMode())
-                .paymentStatus(PaymentStatus.PAID)
+                .paymentStatus(initialStatus)
                 .build();
 
         Bill savedBill = billRepository.save(bill);
 
-        loyaltyService.awardPoints(shopId, booking.getCustomerId(), savedBill.getId(), total);
+        // Award loyalty points immediately for cash/UPI; Razorpay awards on webhook
+        if (initialStatus == PaymentStatus.PAID) {
+            loyaltyService.awardPoints(shopId, booking.getCustomerId(), savedBill.getId(), total);
+        }
+
         return toBillResponse(savedBill);
 
     }
@@ -338,7 +348,9 @@ public class BookingService {
                 bill.getTotalAmount(),
                 bill.getPaymentMode(),
                 bill.getPaymentStatus(),
-                bill.getCreatedAt()
+                bill.getCreatedAt(),
+                bill.getRazorpayOrderId(),
+                bill.getRazorpayPaymentId()
         );
     }
 
