@@ -2,6 +2,7 @@ package com.trimly.backend.controller;
 
 import com.trimly.backend.dto.bill.BillRequest;
 import com.trimly.backend.dto.bill.BillResponse;
+import com.trimly.backend.dto.booking.AvailableSlotsResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
@@ -71,6 +72,15 @@ public class BookingController {
     ) {
         BillResponse response = bookingService.createBill(shopId, bookingId, request, userDetails.getUser().getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/available-slots")
+    public ResponseEntity<AvailableSlotsResponse> getAvailableSlots(
+            @PathVariable UUID shopId,
+            @RequestParam LocalDate date,
+            @RequestParam UUID staffId
+    ) {
+        return ResponseEntity.ok(bookingService.getAvailableSlots(shopId, date, staffId));
     }
 
     @PatchMapping("/{bookingId}/cancel")

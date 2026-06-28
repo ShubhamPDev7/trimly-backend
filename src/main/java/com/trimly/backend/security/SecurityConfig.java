@@ -71,6 +71,11 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/shops/*/bookings/available-slots").permitAll()
+                        .requestMatchers("/api/v1/shops/*/services").permitAll()
+                        .requestMatchers("/api/v1/shops/*/hours").permitAll()
+                        .requestMatchers("/api/v1/shops/*/reviews").permitAll()
+                        .requestMatchers("/api/v1/shops/*/reviews/summary").permitAll()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

@@ -2,6 +2,7 @@ package com.trimly.backend.service;
 
 import com.trimly.backend.dto.bill.BillRequest;
 import com.trimly.backend.dto.bill.BillResponse;
+import com.trimly.backend.dto.booking.AvailableSlotsResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
@@ -17,6 +18,8 @@ import com.trimly.backend.repository.BillRepository;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.BookingServiceItemRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
+import com.trimly.backend.repository.ShopClosedDateRepository;
+import com.trimly.backend.repository.ShopHoursRepository;
 import com.trimly.backend.repository.ShopRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.trimly.backend.repository.UserRepository;
@@ -29,10 +32,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.trimly.backend.util.Sanitizer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -51,6 +56,8 @@ public class BookingService {
     private final EmailService emailService;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
+    private final ShopHoursRepository shopHoursRepository;
+    private final ShopClosedDateRepository shopClosedDateRepository;
 
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
@@ -67,8 +74,8 @@ public class BookingService {
                         "guestName and guestPhone are required when staff creates a booking on behalf of a customer.");
             }
             customerId = null;
-            guestName = Sanitizer.clean(request.guestName());
-            guestPhone = Sanitizer.clean(request.guestPhone());
+            guestName = request.guestName();
+            guestPhone = request.guestPhone();
         } else {
             customerId = currentUser.getId();
             guestName = null;
@@ -275,6 +282,52 @@ public class BookingService {
         loyaltyService.awardPoints(shopId, booking.getCustomerId(), savedBill.getId(), total);
         return toBillResponse(savedBill);
 
+    }
+
+    private static final int SLOT_INTERVAL_MINUTES = 30;
+
+    @Transactional(readOnly = true)
+    public AvailableSlotsResponse getAvailableSlots(UUID shopId, LocalDate date, UUID staffId) {
+        if (!shopRepository.existsById(shopId)) {
+            throw new ResourceNotFoundException("Shop not found.");
+        }
+
+        if (!shopAccessService.hasShopAccess(staffId, shopId)) {
+            throw new IllegalArgumentException("The specified staff member does not belong to this shop.");
+        }
+
+        if (shopClosedDateRepository.existsByShopIdAndClosedDate(shopId, date)) {
+            return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, List.of());
+        }
+
+        int dayOfWeek = date.getDayOfWeek().getValue();
+        var hours = shopHoursRepository.findByShopIdAndDayOfWeek(shopId, dayOfWeek)
+                .orElse(null);
+
+        if (hours == null || hours.isClosed()) {
+            return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, List.of());
+        }
+
+        Set<LocalTime> takenSlots = bookingRepository
+                .findByStaffIdAndBookingDate(staffId, date)
+                .stream()
+                .filter(b -> b.getStatus() != BookingStatus.CANCELLED
+                        && b.getStatus() != BookingStatus.REJECTED)
+                .map(Booking::getTimeSlot)
+                .collect(Collectors.toSet());
+
+        List<LocalTime> available = new ArrayList<>();
+        LocalTime cursor = hours.getOpenTime();
+        LocalTime closeTime = hours.getCloseTime();
+
+        while (cursor.isBefore(closeTime)) {
+            if (!takenSlots.contains(cursor)) {
+                available.add(cursor);
+            }
+            cursor = cursor.plusMinutes(SLOT_INTERVAL_MINUTES);
+        }
+
+        return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, available);
     }
 
     private BillResponse toBillResponse(Bill bill) {
