@@ -1,13 +1,19 @@
 package com.trimly.backend.service;
 
 import com.trimly.backend.dto.dashboard.DashboardSummaryResponse;
+import com.trimly.backend.dto.dashboard.PeakHoursResponse;
+import com.trimly.backend.dto.dashboard.ShopOverviewResponse;
 import com.trimly.backend.dto.dashboard.StaffPerformanceResponse;
+import com.trimly.backend.dto.dashboard.TopServicesResponse;
 import com.trimly.backend.entity.Bill;
 import com.trimly.backend.entity.Booking;
 import com.trimly.backend.entity.ShopStaff;
 import com.trimly.backend.entity.User;
 import com.trimly.backend.enums.BookingStatus;
+import com.trimly.backend.enums.PaymentStatus;
 import com.trimly.backend.repository.BillRepository;
+import com.trimly.backend.repository.BookingServiceItemRepository;
+import com.trimly.backend.repository.ServiceItemRepository;
 import com.trimly.backend.repository.ReviewRepository;
 import com.trimly.backend.repository.BookingRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
@@ -32,6 +38,8 @@ public class DashboardService {
     private final ShopAccessService shopAccessService;
     private final ShopStaffRepository shopStaffRepository;
     private final ReviewRepository reviewRepository;
+    private final BookingServiceItemRepository bookingServiceItemRepository;
+    private final ServiceItemRepository serviceItemRepository;
 
     public DashboardSummaryResponse getSummary(UUID shopId, LocalDate startDate, LocalDate endDate, UUID currentUserId) {
         shopAccessService.verifyShopAccess(currentUserId, shopId);
@@ -157,4 +165,148 @@ public class DashboardService {
         }
         return booking.getGuestName() != null ? booking.getGuestName() : "Guest";
     }
+
+    // ── Peak Hours ────────────────────────────────────────────────────────────
+
+    public PeakHoursResponse getPeakHours(UUID shopId, LocalDate startDate, LocalDate endDate, UUID currentUserId) {
+        shopAccessService.verifyShopAccess(currentUserId, shopId);
+
+        List<Booking> bookings = bookingRepository.findByShopIdAndBookingDateBetween(shopId, startDate, endDate)
+                .stream()
+                .filter(b -> b.getStatus() != BookingStatus.CANCELLED && b.getStatus() != BookingStatus.REJECTED)
+                .collect(Collectors.toList());
+
+        // Count bookings per hour (0–23)
+        Map<Integer, Long> countByHour = bookings.stream()
+                .collect(Collectors.groupingBy(
+                        b -> b.getTimeSlot().getHour(),
+                        Collectors.counting()
+                ));
+
+        // Build all 24 slots, defaulting to 0
+        List<PeakHoursResponse.HourSlot> slots = new ArrayList<>();
+        for (int hour = 0; hour < 24; hour++) {
+            String label = formatHour(hour);
+            slots.add(new PeakHoursResponse.HourSlot(hour, label, countByHour.getOrDefault(hour, 0L)));
+        }
+
+        return new PeakHoursResponse(slots);
+    }
+
+    private String formatHour(int hour) {
+        if (hour == 0) return "12:00 AM";
+        if (hour < 12) return hour + ":00 AM";
+        if (hour == 12) return "12:00 PM";
+        return (hour - 12) + ":00 PM";
+    }
+
+    // ── Top Services ─────────────────────────────────────────────────────────
+
+    public TopServicesResponse getTopServices(UUID shopId, LocalDate startDate, LocalDate endDate, UUID currentUserId) {
+        shopAccessService.verifyShopAccess(currentUserId, shopId);
+
+        List<Booking> bookings = bookingRepository.findByShopIdAndBookingDateBetween(shopId, startDate, endDate)
+                .stream()
+                .filter(b -> b.getStatus() == BookingStatus.COMPLETED)
+                .collect(Collectors.toList());
+
+        if (bookings.isEmpty()) {
+            return new TopServicesResponse(List.of());
+        }
+
+        List<UUID> bookingIds = bookings.stream().map(Booking::getId).collect(Collectors.toList());
+        List<Object[]> rows = bookingServiceItemRepository.findServiceStatsByBookingIds(bookingIds);
+
+        // Load service names in one query
+        List<UUID> serviceIds = rows.stream()
+                .map(r -> (UUID) r[0])
+                .collect(Collectors.toList());
+
+        Map<UUID, String> serviceNames = serviceItemRepository.findAllById(serviceIds)
+                .stream()
+                .collect(Collectors.toMap(s -> s.getId(), s -> s.getName()));
+
+        List<TopServicesResponse.ServiceStat> stats = rows.stream()
+                .map(r -> {
+                    UUID serviceId = (UUID) r[0];
+                    long bookingCount = ((Number) r[1]).longValue();
+                    BigDecimal totalRevenue = (BigDecimal) r[2];
+                    String name = serviceNames.getOrDefault(serviceId, "Unknown Service");
+                    return new TopServicesResponse.ServiceStat(serviceId, name, bookingCount, totalRevenue);
+                })
+                .limit(10)
+                .collect(Collectors.toList());
+
+        return new TopServicesResponse(stats);
+    }
+
+    // ── Shop Overview ─────────────────────────────────────────────────────────
+
+    public ShopOverviewResponse getOverview(UUID shopId, LocalDate startDate, LocalDate endDate, UUID currentUserId) {
+        shopAccessService.verifyShopAccess(currentUserId, shopId);
+
+        Instant start = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant end = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+        List<Booking> allBookings = bookingRepository.findByShopIdAndBookingDateBetween(shopId, startDate, endDate);
+        List<Bill> bills = billRepository.findByShopIdAndCreatedAtBetween(shopId, start, end)
+                .stream()
+                .filter(b -> b.getPaymentStatus() == PaymentStatus.PAID)
+                .collect(Collectors.toList());
+
+        long total = allBookings.size();
+        long completed = allBookings.stream().filter(b -> b.getStatus() == BookingStatus.COMPLETED).count();
+        long cancelled = allBookings.stream().filter(b -> b.getStatus() == BookingStatus.CANCELLED).count();
+
+        double cancellationRate = total == 0 ? 0 : Math.round((cancelled * 100.0 / total) * 10.0) / 10.0;
+
+        // Unique customers (registered only — guests counted by phone)
+        Set<UUID> customerIds = allBookings.stream()
+                .filter(b -> b.getCustomerId() != null)
+                .map(Booking::getCustomerId)
+                .collect(Collectors.toSet());
+
+        Set<String> guestPhones = allBookings.stream()
+                .filter(b -> b.getCustomerId() == null && b.getGuestPhone() != null)
+                .map(Booking::getGuestPhone)
+                .collect(Collectors.toSet());
+
+        long totalUniqueCustomers = customerIds.size() + guestPhones.size();
+
+        // Repeat customers = those with more than 1 booking in the period
+        long repeatCustomers = allBookings.stream()
+                .filter(b -> b.getCustomerId() != null)
+                .collect(Collectors.groupingBy(Booking::getCustomerId, Collectors.counting()))
+                .values().stream()
+                .filter(count -> count > 1)
+                .count();
+
+        double repeatCustomerRate = customerIds.isEmpty() ? 0
+                : Math.round((repeatCustomers * 100.0 / customerIds.size()) * 10.0) / 10.0;
+
+        // Average bill value
+        BigDecimal avgBillValue = bills.isEmpty() ? BigDecimal.ZERO
+                : bills.stream()
+                .map(Bill::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(bills.size()), 2, java.math.RoundingMode.HALF_UP);
+
+        Double avgRating = reviewRepository.findAverageRatingByShopId(shopId);
+        Double roundedRating = avgRating != null ? Math.round(avgRating * 10.0) / 10.0 : null;
+        long totalReviews = reviewRepository.countByShopId(shopId);
+
+        return new ShopOverviewResponse(
+                total,
+                completed,
+                cancelled,
+                cancellationRate,
+                totalUniqueCustomers,
+                repeatCustomers,
+                repeatCustomerRate,
+                avgBillValue,
+                roundedRating,
+                totalReviews
+        );
+    }
+
 }
