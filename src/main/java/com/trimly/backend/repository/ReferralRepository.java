@@ -16,4 +16,6 @@ public interface ReferralRepository extends JpaRepository<Referral, UUID> {
     Optional<Referral> findByReferralCodeAndShopId(String referralCode, UUID shopId);
 
     boolean existsByShopIdAndReferredId(UUID shopId, UUID referredId);
+
+    Optional<Referral> findByShopIdAndReferredIdAndStatus(UUID shopId, UUID referredId, String status);
 }

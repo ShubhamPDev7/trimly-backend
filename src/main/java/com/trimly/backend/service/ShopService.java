@@ -9,6 +9,7 @@ import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
 import com.trimly.backend.repository.UserRepository;
+import com.trimly.backend.service.SubscriptionService;
 import com.trimly.backend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class ShopService {
     private final ShopStaffRepository shopStaffRepository;
     private final JwtUtil jwtUtil;
     private final ShopAccessService shopAccessService;
+    private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
 
     @Transactional
@@ -99,6 +101,9 @@ public class ShopService {
         User userToAdd = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No account found with this email. The person must register on Trimly before being added as staff."));
+
+        int currentStaffCount = shopStaffRepository.findByShopId(shopId).size();
+        subscriptionService.enforceStaffLimit(shopId, currentStaffCount);
 
         if (shopStaffRepository.findByShopIdAndUserId(shopId, userToAdd.getId()).isPresent()) {
             throw new IllegalArgumentException("This person is already staff at this shop.");

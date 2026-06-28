@@ -56,6 +56,8 @@ public class BookingService {
     private final LoyaltyService loyaltyService;
     private final EmailService emailService;
     private final FcmService fcmService;
+    private final ReferralService referralService;
+    private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
     private final ShopHoursRepository shopHoursRepository;
@@ -64,6 +66,11 @@ public class BookingService {
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
         boolean isStaff = shopAccessService.hasShopAccess(currentUser.getId(), shopId);
+
+        LocalDate now = LocalDate.now();
+        int monthBookings = bookingRepository.countByShopIdAndBookingDateBetween(
+                shopId, now.withDayOfMonth(1), now.withDayOfMonth(now.lengthOfMonth()));
+        subscriptionService.enforceBookingLimit(shopId, monthBookings);
 
         UUID customerId;
         String guestName;
@@ -195,6 +202,11 @@ public class BookingService {
                 User customer = userRepository.findById(updatedBooking.getCustomerId()).orElseThrow();
                 String shopName = shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop");
                 if (request.status() == BookingStatus.ACCEPTED) {
+                    try {
+                        referralService.completeReferral(shopId, updatedBooking.getCustomerId());
+                    } catch (Exception e) {
+                        log.warn("Referral completion failed: {}", e.getMessage());
+                    }
                     fcmService.sendToUser(booking.getCustomerId(), "Booking Accepted", "Your booking has been accepted!");
                     emailService.sendBookingAcceptedToCustomer(
                             customer.getEmail(), customer.getName(), shopName,

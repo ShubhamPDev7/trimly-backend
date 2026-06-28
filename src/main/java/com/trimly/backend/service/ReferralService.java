@@ -24,20 +24,29 @@ public class ReferralService {
     private final ReferralRepository referralRepository;
     private final UserRepository userRepository;
     private final LoyaltyService loyaltyService;
-    private final ShopAccessService shopAccessService;
 
     @Transactional
     public MyReferralCodeResponse getMyReferralCode(UUID shopId, User currentUser) {
         if (currentUser.getReferralCode() == null) {
-            String code = generateCode(currentUser);
-            currentUser.setReferralCode(code);
+            currentUser.setReferralCode(generateCode(currentUser));
             userRepository.save(currentUser);
         }
 
-        String message = "Book your next haircut at this shop and get loyalty points! Use my code: "
-                + currentUser.getReferralCode();
+        String code = currentUser.getReferralCode();
 
-        return new MyReferralCodeResponse(currentUser.getReferralCode(), message);
+        // Ensure a referral template row exists for this shop so others can apply it
+        referralRepository.findByReferralCodeAndShopId(code, shopId)
+                .orElseGet(() -> referralRepository.save(Referral.builder()
+                        .shopId(shopId)
+                        .referrerId(currentUser.getId())
+                        .referredId(null)
+                        .referralCode(code)
+                        .status("OPEN")
+                        .pointsAwarded(0)
+                        .build()));
+
+        String message = "Book your next haircut and get loyalty points! Use my code: " + code;
+        return new MyReferralCodeResponse(code, message);
     }
 
     @Transactional
@@ -61,11 +70,10 @@ public class ReferralService {
 
     @Transactional
     public void completeReferral(UUID shopId, UUID referredUserId) {
-        referralRepository.findByShopIdAndReferrerId(shopId, referredUserId)
-                .stream()
-                .filter(r -> "PENDING".equals(r.getStatus())
-                        && r.getReferredId().equals(referredUserId))
-                .findFirst()
+        if (referredUserId == null) return;
+
+        referralRepository
+                .findByShopIdAndReferredIdAndStatus(shopId, referredUserId, "PENDING")
                 .ifPresent(referral -> {
                     referral.setStatus("COMPLETED");
                     referral.setPointsAwarded(REFERRAL_POINTS);

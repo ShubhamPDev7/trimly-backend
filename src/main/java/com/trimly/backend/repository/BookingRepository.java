@@ -23,4 +23,6 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findByShopIdAndStatus(UUID shopId, BookingStatus status);
     List<Booking> findByShopIdAndBookingDateBetween(UUID shopId, LocalDate startDate, LocalDate endDate);
 
+    int countByShopIdAndBookingDateBetween(UUID shopId, LocalDate startDate, LocalDate endDate);
+
 }
