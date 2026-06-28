@@ -1,6 +1,6 @@
 # Trimly — Backend API
 
-Production-ready REST API for a multi-shop barbershop SaaS. Manages bookings, walk-in queues, billing, loyalty points, staff, and real-time notifications across multiple shops.
+Production-ready REST API for a multi-shop barbershop SaaS. Manages bookings, walk-in queues, billing, loyalty points, staff, real-time queue tracking, and payment processing across multiple shops.
 
 ---
 
@@ -12,10 +12,12 @@ Production-ready REST API for a multi-shop barbershop SaaS. Manages bookings, wa
 | Framework | Spring Boot 3.3.4 |
 | Database | PostgreSQL |
 | Cache / Rate Limiting | Redis |
-| Migrations | Flyway (V1–V15) |
+| Migrations | Flyway (V1–V17) |
 | ORM | Spring Data JPA (Hibernate) |
 | Auth | Spring Security + JWT (JJWT 0.12.x) |
+| Payments | Razorpay (order creation + webhook) |
 | Email | Resend (via REST) |
+| Real-time | Server-Sent Events (SSE) |
 | Input Sanitization | Jsoup |
 | Validation | Jakarta Bean Validation |
 | Boilerplate | Lombok |
@@ -37,6 +39,7 @@ Spring Security (JwtAuthFilter → SecurityContext)
 Controllers (thin) → Services (business logic) → Spring Data JPA → PostgreSQL
                                                                ↘ Redis (rate limiting)
                                                                ↘ Resend (email)
+                                                               ↘ Razorpay (payments)
 ```
 
 ### Package structure
@@ -45,12 +48,12 @@ Controllers (thin) → Services (business logic) → Spring Data JPA → Postgre
 com.trimly.backend
 ├── entity/        # JPA entities
 ├── enums/         # Role, StaffRole, ServiceCategory, BookingStatus,
-│                  # WalkInStatus, PaymentMode, PaymentStatus
+│                  # WalkInStatus, PaymentMode, PaymentStatus, LoyaltyTransactionType
 ├── repository/    # Spring Data JPA repositories
 ├── service/       # Business logic, ShopAccessService, BookingMapper
 ├── controller/    # Thin REST controllers
 ├── security/      # JWT util, auth filter, UserDetails, SecurityConfig
-├── config/        # WebConfig, GlobalExceptionHandler
+├── config/        # WebConfig, GlobalExceptionHandler, RedisConfig
 ├── interceptor/   # RateLimitInterceptor (Redis-backed)
 ├── dto/           # Request/response DTOs grouped by feature
 ├── util/          # Sanitizer (Jsoup-based HTML stripping)
@@ -69,11 +72,12 @@ com.trimly.backend
 | **ShopHours** | id, shopId, dayOfWeek, openTime, closeTime, isOpen | Per-day operating hours |
 | **ShopClosedDate** | id, shopId, date, reason | One-off closures |
 | **ServiceItem** | id, shopId, category, name, price, estTimeMinutes | Soft-deletable |
-| **Booking** | id, shopId, customerId (nullable), staffId, guestName, guestPhone, bookingDate, timeSlot, status | Guest fields for staff-added walk-ins |
+| **Booking** | id, shopId, customerId (nullable), staffId, guestName, guestPhone, bookingDate, timeSlot, status | Guest fields for staff-added bookings |
 | **BookingServiceItem** | id, bookingId, serviceId, priceAtBooking | Price snapshotted at booking time |
-| **Bill** | id, shopId, bookingId (nullable), walkInQueueEntryId (nullable), totalAmount, loyaltyDiscount, finalAmount, paymentMode, paymentStatus | Covers both booking and walk-in billing |
-| **WalkInQueueEntry** | id, shopId, customerId (nullable), guestName, guestPhone, preferredStaffId, status | WAITING / IN_SERVICE / COMPLETED / CANCELLED / NO_SHOW |
+| **Bill** | id, shopId, bookingId (nullable), walkInQueueEntryId (nullable), totalAmount, paymentMode, paymentStatus, razorpayOrderId, razorpayPaymentId | Covers booking and walk-in billing |
+| **WalkInQueueEntry** | id, shopId, customerId (nullable), guestName, guestPhone, preferredStaffId, assignedStaffId, status, joinedAt, startedAt, completedAt | WAITING / IN_PROGRESS / COMPLETED / CANCELLED / NO_SHOW |
 | **WalkInQueueServiceItem** | id, queueEntryId, serviceId, priceAtJoin | Price snapshotted at join time |
+| **ServiceRecord** | id, shopId, staffId, customerId, bookingId (nullable), walkInQueueEntryId (nullable), notes, productsUsed, photoUrls | Style history per customer |
 | **Review** | id, shopId, reviewerId, bookingId (nullable), rating, comment, ownerReply, ownerRepliedAt | One review per booking or walk-in |
 | **LoyaltyAccount** | id, shopId, customerId, balance | Per-customer per-shop balance |
 | **LoyaltyTransaction** | id, shopId, customerId, billId, type (EARN/REDEEM), points, balanceAfter | Full audit ledger |
@@ -105,28 +109,42 @@ com.trimly.backend
 - Customer self-booking or staff guest-booking (`guestName` / `guestPhone`)
 - Slot-conflict detection — same staff + date + timeslot blocked (REJECTED/CANCELLED excluded)
 - DB-level partial unique index prevents race-condition double-booking
-- State machine: `PENDING → CONFIRMED / REJECTED → COMPLETED / CANCELLED`
-- Paginated booking list with DB-level filtering by date and/or status — returns pagination metadata (`page`, `size`, `totalElements`, `totalPages`, `last`)
+- State machine: `PENDING → ACCEPTED / REJECTED → COMPLETED / CANCELLED`
+- Paginated booking list with date and/or status filters
 - Email notifications on every status transition
+- **"Book same as last time"** — customer can rebook their last service (same staff, services, timeslot) on a new date with a single call
 
 ### Walk-in Queue
 - Customer self-join or staff adds guest
-- Predictive wait time based on queue position + service durations + shop hours
-- Statuses: WAITING → IN_SERVICE → COMPLETED / CANCELLED / NO_SHOW
+- Predictive wait time based on queue position, service durations, and shop hours
+- Statuses: WAITING → IN_PROGRESS → COMPLETED / CANCELLED / NO_SHOW
+- **Live queue position via SSE** — client subscribes to a stream and receives position + wait time updates every 10 seconds; stream closes automatically when service is completed/cancelled
 - Owner notified by email when any customer joins the queue
 - Customer notified with position + estimated wait time
+
+### Payments (Razorpay)
+- Online payment flow: create Razorpay order from bill → receive `payment.captured` webhook → mark bill PAID
+- Webhook signature verified via HMAC-SHA256
+- Loyalty points awarded automatically on webhook capture
+- Idempotent webhook handler — duplicate events ignored safely
+- Payment modes: CASH / UPI / RAZORPAY
 
 ### Billing
 - Generates bill for a completed booking or walk-in entry
 - Double-bill prevented; total recalculated server-side (never trusted from client)
-- Payment modes: CASH / UPI / ONLINE
-- Loyalty points processed atomically at bill creation
+- Razorpay bills start as PENDING and flip to PAID on webhook
 
 ### Loyalty Points
-- **Earn**: 1 point per ₹10 spent on the final amount (after any discount)
-- **Redeem**: pass `redeemPoints: true` — applies all available balance as discount, capped at 50% of bill value (1 point = ₹1 off)
+- **Earn**: 1 point per ₹10 spent
+- **Redeem**: applies available balance as discount, capped at 50% of bill value (1 point = ₹1 off)
 - Full ledger in `loyalty_transactions`; per-shop balance in `loyalty_accounts`
 - Guest bookings / walk-ins earn no points
+
+### Style History (Service Records)
+- Staff creates a service record after completing a booking or walk-in
+- Records: notes, products used, photo URLs
+- Customer can view their full style history across all shops
+- Powers the "book same as last time" feature
 
 ### Reviews
 - One review per completed booking or walk-in (prevents fake reviews)
@@ -136,14 +154,17 @@ com.trimly.backend
 - Owner notified by email on every new review
 
 ### Dashboard
-- Daily revenue summary with date-range filtering
+- Revenue summary with date-range filtering and daily breakdown
 - Top customers by spend
 - Staff performance: completed bookings + revenue per staff member
+- Peak hours analysis
+- Top services by booking count
+- Shop overview stats
 
 ### Security
 - Passwords hashed with BCrypt
 - JWT signed with HMAC-SHA, secret via environment variable
-- All free-text inputs (`guestName`, `guestPhone`, `comment`, `ownerReply`) sanitized with Jsoup before persistence — strips all HTML and script tags
+- All free-text inputs sanitized with Jsoup before persistence — strips all HTML and script tags
 - CORS configured for known frontend origins only
 
 ### Email Notifications
@@ -153,7 +174,7 @@ All emails are fire-and-forget — failures are logged but never propagate to th
 | Trigger | Customer | Owner |
 |---|---|---|
 | Booking created | ✅ Confirmation | ✅ New request |
-| Booking confirmed | ✅ Confirmed | — |
+| Booking accepted | ✅ Confirmed | — |
 | Booking rejected | ✅ Declined | — |
 | Booking cancelled | ✅ Cancellation | ✅ Slot freed |
 | Customer joins walk-in queue | ✅ Position + wait | ✅ New walk-in alert |
@@ -189,6 +210,10 @@ app.frontend.reset-password-url=http://localhost:5173/reset-password
 
 spring.data.redis.host=localhost
 spring.data.redis.port=6379
+
+razorpay.key.id=rzp_test_your_key_id
+razorpay.key.secret=your_key_secret
+razorpay.webhook.secret=your_webhook_secret
 ```
 
 ```bash
@@ -196,7 +221,7 @@ spring.data.redis.port=6379
 mvn spring-boot:run
 ```
 
-Flyway applies all 15 migrations automatically on startup.
+Flyway applies all 17 migrations automatically on startup.
 
 ### Quick smoke test
 
@@ -230,6 +255,7 @@ All endpoints prefixed with `/api/v1`.
 | POST | `/auth/register` | Public | STAFF role blocked |
 | POST | `/auth/login` | Public | Returns access + refresh token |
 | POST | `/auth/refresh` | Public | Rotates refresh token |
+| POST | `/auth/logout` | Public | Invalidates refresh token |
 | POST | `/auth/forgot-password` | Public | Sends reset email |
 | POST | `/auth/reset-password` | Public | Sets new password |
 
@@ -245,7 +271,7 @@ All endpoints prefixed with `/api/v1`.
 | GET | `/shops/{shopId}/staff` | Shop staff | |
 | DELETE | `/shops/{shopId}/staff/{staffUserId}` | Owner | Remove staff |
 | POST | `/shops/{shopId}/hours` | Owner | Set operating hours |
-| GET | `/shops/{shopId}/hours` | Authenticated | |
+| GET | `/shops/{shopId}/hours` | Public | |
 | POST | `/shops/{shopId}/hours/closed-dates` | Owner | Add closed date |
 | GET | `/shops/{shopId}/hours/closed-dates` | Authenticated | |
 
@@ -254,7 +280,7 @@ All endpoints prefixed with `/api/v1`.
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | POST | `/shops/{shopId}/services` | Shop staff | |
-| GET | `/shops/{shopId}/services` | Authenticated | `?category=` optional |
+| GET | `/shops/{shopId}/services` | Public | `?category=` optional |
 | PUT | `/shops/{shopId}/services/{serviceId}` | Shop staff | |
 | DELETE | `/shops/{shopId}/services/{serviceId}` | Shop staff | Soft delete |
 
@@ -264,9 +290,11 @@ All endpoints prefixed with `/api/v1`.
 |---|---|---|---|
 | POST | `/shops/{shopId}/bookings` | Authenticated | Customer or staff (guest) |
 | GET | `/shops/{shopId}/bookings` | Shop staff | `?date=` `?status=` `?page=` `?size=` |
+| GET | `/shops/{shopId}/bookings/available-slots` | Public | `?date=` `?staffId=` |
 | PATCH | `/shops/{shopId}/bookings/{bookingId}/status` | Shop staff | Enforces state machine |
 | PATCH | `/shops/{shopId}/bookings/{bookingId}/cancel` | Customer | Own bookings only |
 | POST | `/shops/{shopId}/bookings/{bookingId}/bill` | Shop staff | Booking must be COMPLETED |
+| POST | `/shops/{shopId}/bookings/{bookingId}/service-record` | Shop staff | After completion |
 
 ### Walk-in Queue
 
@@ -274,11 +302,20 @@ All endpoints prefixed with `/api/v1`.
 |---|---|---|---|
 | POST | `/shops/{shopId}/walk-in-queue` | Authenticated | Self-join or staff adds guest |
 | GET | `/shops/{shopId}/walk-in-queue` | Shop staff | Current queue |
-| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/start` | Shop staff | → IN_SERVICE |
+| PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/start` | Shop staff | → IN_PROGRESS |
 | PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/complete` | Shop staff | → COMPLETED |
 | PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/cancel` | Shop staff | → CANCELLED |
 | PATCH | `/shops/{shopId}/walk-in-queue/{entryId}/no-show` | Shop staff | → NO_SHOW |
 | POST | `/shops/{shopId}/walk-in-queue/{entryId}/bill` | Shop staff | Entry must be COMPLETED |
+| POST | `/shops/{shopId}/walk-in-queue/{entryId}/service-record` | Shop staff | After completion |
+| GET | `/shops/{shopId}/walk-in-queue/{entryId}/position` | Public | SSE stream — fires every 10s |
+
+### Payments
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/bills/{billId}/pay/online` | Authenticated | Creates Razorpay order |
+| POST | `/razorpay/webhook` | Public | Razorpay signature verified |
 
 ### Reviews
 
@@ -296,6 +333,7 @@ All endpoints prefixed with `/api/v1`.
 | GET | `/shops/{shopId}/loyalty/me` | Authenticated | Own balance |
 | GET | `/shops/{shopId}/loyalty/me/transactions` | Authenticated | Own transaction history |
 | GET | `/shops/{shopId}/loyalty/customer/{customerId}` | Shop staff | Customer balance |
+| POST | `/shops/{shopId}/loyalty/redeem` | Authenticated | Redeem points on a bill |
 
 ### Dashboard
 
@@ -303,6 +341,9 @@ All endpoints prefixed with `/api/v1`.
 |---|---|---|---|
 | GET | `/shops/{shopId}/dashboard/summary` | Shop staff | `?startDate=` `?endDate=` |
 | GET | `/shops/{shopId}/dashboard/staff-performance` | Shop staff | `?startDate=` `?endDate=` |
+| GET | `/shops/{shopId}/dashboard/peak-hours` | Shop staff | `?startDate=` `?endDate=` |
+| GET | `/shops/{shopId}/dashboard/top-services` | Shop staff | `?startDate=` `?endDate=` |
+| GET | `/shops/{shopId}/dashboard/overview` | Shop staff | `?startDate=` `?endDate=` |
 
 ### Customer
 
@@ -312,3 +353,5 @@ All endpoints prefixed with `/api/v1`.
 | PUT | `/customers/me` | Authenticated | Update name/phone |
 | DELETE | `/customers/me` | Authenticated | Soft-delete account |
 | GET | `/customers/me/bookings` | Authenticated | Own booking history |
+| GET | `/customers/me/style-history` | Authenticated | Service records across all shops |
+| POST | `/customers/me/rebook-last` | Authenticated | `?date=YYYY-MM-DD` |
