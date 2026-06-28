@@ -18,4 +18,6 @@ public interface ServiceRecordRepository extends JpaRepository<ServiceRecord, UU
     List<ServiceRecord> findByShopIdOrderByCreatedAtDesc(UUID shopId);
 
     List<ServiceRecord> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
+
+    Optional<ServiceRecord> findTopByCustomerIdOrderByCreatedAtDesc(UUID customerId);
 }

@@ -7,10 +7,13 @@ import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.CustomerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -25,6 +28,15 @@ public class CustomerBookingController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         return ResponseEntity.ok(customerService.getMyBookings(userDetails.getUser().getId()));
+    }
+
+    @PostMapping("/rebook-last")
+    public ResponseEntity<BookingResponse> rebookLast(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(customerService.rebookLastService(userDetails.getUser(), date));
     }
 
     @GetMapping
