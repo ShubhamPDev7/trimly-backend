@@ -7,6 +7,7 @@ import com.trimly.backend.dto.dashboard.StaffPerformanceResponse;
 import com.trimly.backend.dto.dashboard.TopServicesResponse;
 import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.DashboardService;
+import com.trimly.backend.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+    private final SubscriptionService subscriptionService;
 
     @GetMapping("/summary")
     public ResponseEntity<DashboardSummaryResponse> getSummary(
@@ -31,6 +33,7 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        subscriptionService.enforceDashboardAccess(shopId);
         return ResponseEntity.ok(dashboardService.getSummary(shopId, startDate, endDate, userDetails.getUser().getId()));
     }
 
@@ -41,6 +44,7 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        subscriptionService.enforceDashboardAccess(shopId);
         return ResponseEntity.ok(dashboardService.getStaffPerformance(shopId, startDate, endDate, userDetails.getUser().getId()));
     }
 
@@ -51,6 +55,7 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        subscriptionService.enforceDashboardAccess(shopId);
         return ResponseEntity.ok(dashboardService.getPeakHours(shopId, startDate, endDate, userDetails.getUser().getId()));
     }
 
@@ -61,6 +66,7 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        subscriptionService.enforceDashboardAccess(shopId);
         return ResponseEntity.ok(dashboardService.getTopServices(shopId, startDate, endDate, userDetails.getUser().getId()));
     }
 
@@ -71,7 +77,7 @@ public class DashboardController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        subscriptionService.enforceDashboardAccess(shopId);
         return ResponseEntity.ok(dashboardService.getOverview(shopId, startDate, endDate, userDetails.getUser().getId()));
     }
-
 }
