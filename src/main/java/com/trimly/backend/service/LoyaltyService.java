@@ -130,6 +130,26 @@ public class LoyaltyService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
+    public void awardReferralPoints(UUID shopId, UUID referrerId, int points) {
+        LoyaltyAccount account = loyaltyAccountRepository
+                .findByShopIdAndCustomerId(shopId, referrerId)
+                .orElseGet(() -> loyaltyAccountRepository.save(
+                        LoyaltyAccount.builder().shopId(shopId).customerId(referrerId).balance(0).build()));
+
+        account.setBalance(account.getBalance() + points);
+        loyaltyAccountRepository.save(account);
+
+        loyaltyTransactionRepository.save(LoyaltyTransaction.builder()
+                .loyaltyAccountId(account.getId())
+                .shopId(shopId)
+                .customerId(referrerId)
+                .type(LoyaltyTransactionType.EARNED)
+                .points(points)
+                .description("Referral bonus")
+                .build());
+    }
+
     private LoyaltyAccountResponse toAccountResponse(LoyaltyAccount account) {
         int balanceInRupees = (account.getBalance() / POINTS_PER_REDEMPTION_UNIT) * RUPEES_PER_REDEMPTION_UNIT;
         return new LoyaltyAccountResponse(

@@ -60,6 +60,9 @@ public class User implements Serializable {
         this.createdAt = Instant.now();
     }
 
+    @Column(name = "referral_code", length = 20, unique = true)
+    private String referralCode;
+
     private boolean deleted = false;
 
     private Instant deletedAt;
