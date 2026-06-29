@@ -2,6 +2,7 @@ package com.trimly.backend.service;
 
 import com.trimly.backend.dto.barber.BarberProfileResponse;
 import com.trimly.backend.dto.hours.ShopHoursResponse;
+import com.trimly.backend.dto.policy.CancellationPolicyResponse;
 import com.trimly.backend.dto.service.ServiceItemResponse;
 import com.trimly.backend.dto.shop.BarberPublicProfile;
 import com.trimly.backend.dto.shop.ShopPublicProfileResponse;
@@ -11,6 +12,7 @@ import com.trimly.backend.entity.ShopHours;
 import com.trimly.backend.repository.BarberProfileRepository;
 import com.trimly.backend.repository.ReviewRepository;
 import com.trimly.backend.repository.ServiceItemRepository;
+import com.trimly.backend.repository.ShopCancellationPolicyRepository;
 import com.trimly.backend.repository.ShopHoursRepository;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.ShopStaffRepository;
@@ -39,6 +41,8 @@ public class ShopSearchService {
     private final ShopStaffRepository shopStaffRepository;
     private final ServiceItemService serviceItemService;
     private final ShopHoursService shopHoursService;
+    private final ShopCancellationPolicyRepository cancellationPolicyRepository;
+    private final CancellationPolicyService cancellationPolicyService;
 
     @Transactional(readOnly = true)
     public List<ShopSearchResponse> searchShops(String query, String locality) {
@@ -84,6 +88,8 @@ public class ShopSearchService {
                 })
                 .toList();
 
+        CancellationPolicyResponse policy = cancellationPolicyService.getPolicy(shopId).orElse(null);
+
         return new ShopPublicProfileResponse(
                 shop.getId(),
                 shop.getName(),
@@ -94,7 +100,8 @@ public class ShopSearchService {
                 (int) totalReviews,
                 services,
                 hours,
-                staff
+                staff,
+                policy
         );
     }
 

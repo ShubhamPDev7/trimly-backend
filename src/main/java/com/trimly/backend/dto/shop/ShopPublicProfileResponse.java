@@ -1,6 +1,7 @@
 package com.trimly.backend.dto.shop;
 
 import com.trimly.backend.dto.hours.ShopHoursResponse;
+import com.trimly.backend.dto.policy.CancellationPolicyResponse;
 import com.trimly.backend.dto.service.ServiceItemResponse;
 
 import java.util.List;
@@ -16,5 +17,6 @@ public record ShopPublicProfileResponse(
         Integer totalReviews,
         List<ServiceItemResponse> services,
         List<ShopHoursResponse> hours,
-        List<BarberPublicProfile> staff
+        List<BarberPublicProfile> staff,
+        CancellationPolicyResponse cancellationPolicy
 ) {}
