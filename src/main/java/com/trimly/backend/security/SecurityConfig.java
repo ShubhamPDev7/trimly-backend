@@ -79,6 +79,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/shops/*/reviews").permitAll()
                         .requestMatchers("/api/v1/shops/*/reviews/summary").permitAll()
                         .requestMatchers("/api/v1/razorpay/webhook").permitAll()
+                        .requestMatchers("/api/v1/shops/search").permitAll()
+                        .requestMatchers("/api/v1/shops/localities").permitAll()
+                        .requestMatchers("/api/v1/shops/*/public").permitAll()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
