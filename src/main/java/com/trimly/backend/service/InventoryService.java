@@ -7,9 +7,12 @@ import com.trimly.backend.entity.InventoryItem;
 import com.trimly.backend.entity.InventoryUsage;
 import com.trimly.backend.exception.ResourceNotFoundException;
 import com.trimly.backend.repository.InventoryRepository;
+import com.trimly.backend.repository.ShopRepository;
+import com.trimly.backend.repository.UserRepository;
 import com.trimly.backend.repository.InventoryUsageRepository;
 import com.trimly.backend.repository.ServiceRecordRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
@@ -25,6 +29,10 @@ public class InventoryService {
     private final InventoryUsageRepository inventoryUsageRepository;
     private final ServiceRecordRepository serviceRecordRepository;
     private final ShopAccessService shopAccessService;
+    private final FcmService fcmService;
+    private final EmailService emailService;
+    private final ShopRepository shopRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public InventoryResponse createItem(UUID shopId, InventoryRequest request, UUID currentUserId) {
@@ -98,7 +106,22 @@ public class InventoryService {
             }
 
             item.setQuantityInStock(item.getQuantityInStock().subtract(u.quantityUsed()));
-            inventoryRepository.save(item);
+            InventoryItem savedItem = inventoryRepository.save(item);
+
+            if (savedItem.getLowStockThreshold() != null &&
+                    savedItem.getQuantityInStock().compareTo(savedItem.getLowStockThreshold()) <= 0) {
+                try {
+                    var shop = shopRepository.findById(shopId).orElseThrow();
+                    UUID ownerId = shop.getOwnerId();
+                    fcmService.sendToUser(ownerId, "Low Stock Alert",
+                            savedItem.getName() + " is running low (" + savedItem.getQuantityInStock() + " " + savedItem.getUnit() + " left).");
+                    var owner = userRepository.findById(ownerId).orElseThrow();
+                    emailService.sendLowStockAlert(owner.getEmail(), owner.getName(), shop.getName(),
+                            savedItem.getName(), savedItem.getQuantityInStock(), savedItem.getUnit());
+                } catch (Exception e) {
+                    log.warn("Failed to send low stock alert: {}", e.getMessage());
+                }
+            }
 
             InventoryUsage usage = InventoryUsage.builder()
                     .serviceRecordId(serviceRecordId)

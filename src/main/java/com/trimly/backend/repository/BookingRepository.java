@@ -32,4 +32,16 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                                   @Param("from") java.time.LocalTime from,
                                                   @Param("to") java.time.LocalTime to);
 
+
+    Page<Booking> findByCustomerId(UUID customerId, Pageable pageable);
+    Page<Booking> findByCustomerIdAndStatus(UUID customerId, BookingStatus status, Pageable pageable);
+    Page<Booking> findByCustomerIdAndBookingDateLessThan(UUID customerId, LocalDate date, Pageable pageable);
+
+    @Query("SELECT b FROM Booking b WHERE b.customerId = :customerId AND b.bookingDate >= :date AND b.status IN :statuses")
+    Page<Booking> findByCustomerIdAndBookingDateGreaterThanEqualAndStatusIn(
+            @Param("customerId") UUID customerId,
+            @Param("date") LocalDate date,
+            @Param("statuses") List<BookingStatus> statuses,
+            Pageable pageable);
+
 }

@@ -250,4 +250,18 @@ public class EmailService {
                 + "<td style='padding:4px 0;font-size:14px;font-weight:600'>" + value + "</td>"
                 + "</tr>";
     }
+    public void sendLowStockAlert(String toEmail, String ownerName, String shopName,
+                                  String itemName, java.math.BigDecimal quantity, String unit) {
+        try {
+            String subject = "[" + shopName + "] Low Stock Alert: " + itemName;
+            String body = "Hi " + ownerName + ",\n\n" +
+                    itemName + " is running low at " + shopName + ".\n" +
+                    "Current stock: " + quantity + " " + unit + "\n\n" +
+                    "Please restock soon to avoid service disruptions.\n\nTrimly";
+            send(toEmail, subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send low stock alert email: {}", e.getMessage());
+        }
+    }
+
 }

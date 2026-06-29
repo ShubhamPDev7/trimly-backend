@@ -48,6 +48,7 @@ public class WalkInQueueService {
     private final EmailService emailService;
     private final UserRepository userRepository;
     private final ShopRepository shopRepository;
+    private final FcmService fcmService;
 
     @Transactional
     public WalkInQueueEntryResponse joinQueue(UUID shopId, WalkInJoinRequest request, User currentUser) {
@@ -260,6 +261,17 @@ public class WalkInQueueService {
         entry.setCompletedAt(Instant.now());
 
         WalkInQueueEntry updated = walkInQueueEntryRepository.save(entry);
+
+        // Notify customer via FCM
+        if (updated.getCustomerId() != null) {
+            try {
+                var shop = shopRepository.findById(shopId).orElseThrow();
+                fcmService.sendToUser(updated.getCustomerId(), "Service Complete",
+                        "Your service at " + shop.getName() + " is complete. Hope to see you again!");
+            } catch (Exception e) {
+                log.warn("Failed to send walk-in completion FCM: {}", e.getMessage());
+            }
+        }
 
         return toResponse(updated, null, null);
     }

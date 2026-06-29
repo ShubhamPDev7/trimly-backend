@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
 
 @RestController
 @RequestMapping("/api/v1/customers/me")
@@ -24,10 +25,13 @@ public class CustomerBookingController {
     private final CustomerService customerService;
 
     @GetMapping("/bookings")
-    public ResponseEntity<List<BookingResponse>> getMyBookings(
+    public ResponseEntity<Page<BookingResponse>> getMyBookings(
+            @RequestParam(defaultValue = "all") String filter,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        return ResponseEntity.ok(customerService.getMyBookings(userDetails.getUser().getId()));
+        return ResponseEntity.ok(customerService.getMyBookings(userDetails.getUser().getId(), filter, page, size));
     }
 
     @PostMapping("/rebook-last")

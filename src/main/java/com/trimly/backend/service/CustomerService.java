@@ -1,6 +1,10 @@
 package com.trimly.backend.service;
 
 import com.trimly.backend.dto.booking.BookingRequest;
+import com.trimly.backend.enums.BookingStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.customer.CustomerProfileResponse;
 import com.trimly.backend.dto.customer.UpdateProfileRequest;
@@ -32,9 +36,24 @@ public class CustomerService {
     private final BookingMapper bookingMapper;
     private final BookingService bookingService;
 
-    public List<BookingResponse> getMyBookings(UUID customerId) {
-        List<Booking> bookings = bookingRepository.findByCustomerId(customerId);
-        return bookingMapper.toResponseList(bookings);
+    public Page<BookingResponse> getMyBookings(UUID customerId, String filter, int page, int size) {
+        var pageable = PageRequest.of(page, size, Sort.by("bookingDate").descending().and(Sort.by("timeSlot").descending()));
+        LocalDate today = LocalDate.now();
+
+        Page<Booking> bookings;
+        if ("upcoming".equalsIgnoreCase(filter)) {
+            bookings = bookingRepository.findByCustomerIdAndBookingDateGreaterThanEqualAndStatusIn(
+                    customerId, today,
+                    List.of(BookingStatus.PENDING, BookingStatus.ACCEPTED),
+                    pageable);
+        } else if ("past".equalsIgnoreCase(filter)) {
+            bookings = bookingRepository.findByCustomerIdAndBookingDateLessThan(customerId, today, pageable);
+        } else if ("cancelled".equalsIgnoreCase(filter)) {
+            bookings = bookingRepository.findByCustomerIdAndStatus(customerId, BookingStatus.CANCELLED, pageable);
+        } else {
+            bookings = bookingRepository.findByCustomerId(customerId, pageable);
+        }
+        return bookings.map(bookingMapper::toResponse);
     }
 
     public BookingResponse rebookLastService(User currentUser, LocalDate newDate) {
