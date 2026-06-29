@@ -57,6 +57,10 @@ public class Booking implements Serializable {
     @Column(name = "status", nullable = false, length = 20)
     private BookingStatus status;
 
+    @Column(name = "reminder_sent", nullable = false)
+    @Builder.Default
+    private boolean reminderSent = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

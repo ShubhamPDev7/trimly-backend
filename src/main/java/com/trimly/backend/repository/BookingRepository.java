@@ -5,6 +5,8 @@ import com.trimly.backend.enums.BookingStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -24,5 +26,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findByShopIdAndBookingDateBetween(UUID shopId, LocalDate startDate, LocalDate endDate);
 
     int countByShopIdAndBookingDateBetween(UUID shopId, LocalDate startDate, LocalDate endDate);
+
+    @Query("SELECT b FROM Booking b WHERE b.bookingDate = :date AND b.timeSlot BETWEEN :from AND :to AND b.status = 'ACCEPTED' AND b.reminderSent = false")
+    List<Booking> findUpcomingBookingsForReminder(@Param("date") java.time.LocalDate date,
+                                                  @Param("from") java.time.LocalTime from,
+                                                  @Param("to") java.time.LocalTime to);
 
 }
