@@ -38,16 +38,6 @@ public class SubscriptionController {
                 subscriptionService.createPaymentOrder(shopId, plan, userDetails.getUser().getId()));
     }
 
-    @PatchMapping("/upgrade")
-    public ResponseEntity<SubscriptionResponse> upgradePlan(
-            @PathVariable UUID shopId,
-            @RequestParam SubscriptionPlan plan,
-            @AuthenticationPrincipal CustomUserDetails userDetails
-    ) {
-        return ResponseEntity.ok(
-                subscriptionService.upgradePlan(shopId, plan, userDetails.getUser().getId()));
-    }
-
     @DeleteMapping
     public ResponseEntity<Void> cancelSubscription(
             @PathVariable UUID shopId,
