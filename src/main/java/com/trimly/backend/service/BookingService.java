@@ -23,7 +23,10 @@ import com.trimly.backend.repository.ShopClosedDateRepository;
 import com.trimly.backend.repository.ShopHoursRepository;
 import com.trimly.backend.repository.ShopRepository;
 import com.trimly.backend.repository.StaffLeaveRepository;
+import com.trimly.backend.repository.ShopCancellationPolicyRepository;
 import com.trimly.backend.repository.StaffShiftRepository;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +69,7 @@ public class BookingService {
     private final ShopClosedDateRepository shopClosedDateRepository;
     private final StaffLeaveRepository staffLeaveRepository;
     private final StaffShiftRepository staffShiftRepository;
+    private final ShopCancellationPolicyRepository cancellationPolicyRepository;
 
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
@@ -402,6 +406,17 @@ public class BookingService {
         if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.ACCEPTED) {
             throw new IllegalArgumentException("Only pending or accepted bookings can be cancelled.");
         }
+
+        // Enforce cancellation policy if set
+        cancellationPolicyRepository.findByShopId(shopId).ifPresent(policy -> {
+            LocalDateTime appointmentDateTime = LocalDateTime.of(booking.getBookingDate(), booking.getTimeSlot());
+            LocalDateTime cutoff = appointmentDateTime.minusHours(policy.getMinHoursBeforeCancel());
+            if (LocalDateTime.now().isAfter(cutoff)) {
+                throw new IllegalArgumentException(
+                        "Cancellation not allowed. Must cancel at least " +
+                                policy.getMinHoursBeforeCancel() + " hour(s) before the appointment.");
+            }
+        });
 
         booking.setStatus(BookingStatus.CANCELLED);
         Booking updated = bookingRepository.save(booking);
