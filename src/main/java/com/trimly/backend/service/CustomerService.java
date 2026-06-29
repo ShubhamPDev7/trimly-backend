@@ -72,7 +72,8 @@ public class CustomerService {
 
     public CustomerProfileResponse updateMyProfile(UpdateProfileRequest request, User user) {
         user.setName(request.name());
-        user.setPhone(request.phone());
+        if (request.phone() != null) user.setPhone(request.phone());
+        if (request.email() != null) user.setEmail(request.email());
         User updatedUser = userRepository.save(user);
         return toProfileResponse(updatedUser);
     }

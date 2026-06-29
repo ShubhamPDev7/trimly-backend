@@ -8,14 +8,12 @@ import com.trimly.backend.dto.auth.RefreshTokenRequest;
 import com.trimly.backend.dto.auth.RegisterRequest;
 import com.trimly.backend.dto.auth.ResetPasswordRequest;
 import com.trimly.backend.service.AuthService;
+import com.trimly.backend.service.OtpService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -23,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final OtpService otpService;
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -60,4 +59,18 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+
+    @PostMapping("/send-otp")
+    public ResponseEntity<Void> sendOtp(@RequestParam String phone) {
+        otpService.sendOtp(phone);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<AuthResponse> verifyOtp(
+            @RequestParam String phone,
+            @RequestParam String code
+    ) {
+        return ResponseEntity.ok(otpService.verifyOtp(phone, code));
+    }
 }

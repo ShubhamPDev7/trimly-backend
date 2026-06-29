@@ -15,13 +15,15 @@ public class CustomUserDetailsService implements UserDetailsService {
     private final UserRepository userRepository;
 
     @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        String normalizedEmail = email.trim().toLowerCase();
-        User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("No user found with email: " + normalizedEmail));
+    public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
+        String normalized = identifier.trim();
+
+        User user = userRepository.findByEmail(normalized.toLowerCase())
+                .or(() -> userRepository.findByPhone(normalized))
+                .orElseThrow(() -> new UsernameNotFoundException("No user found: " + normalized));
 
         if (user.isDeleted()) {
-            throw new UsernameNotFoundException("No user found with email: " + normalizedEmail);
+            throw new UsernameNotFoundException("No user found: " + normalized);
         }
 
         return new CustomUserDetails(user);

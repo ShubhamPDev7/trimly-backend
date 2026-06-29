@@ -215,7 +215,7 @@ public class AuthService {
         return new MessageResponse("Password has been reset successfully.");
     }
 
-    private String issueRefreshToken(UUID userId) {
+    String issueRefreshToken(UUID userId) {
         String rawToken = generateRawToken();
         String tokenHash = hashToken(rawToken);
 

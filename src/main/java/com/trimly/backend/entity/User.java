@@ -32,20 +32,17 @@ public class User implements Serializable {
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    @NotBlank
     @Column(name = "name", nullable = false)
     private String name;
 
     @Email
-    @NotBlank
-    @Column(name = "email", nullable = false, unique = true)
+    @Column(name = "email", nullable = true, unique = true)
     private String email;
 
     @Column(name = "phone")
     private String phone;
 
-    @NotBlank
-    @Column(name = "password_hash", nullable = false)
+    @Column(name = "password_hash")
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
