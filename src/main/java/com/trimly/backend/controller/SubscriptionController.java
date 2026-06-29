@@ -1,5 +1,6 @@
 package com.trimly.backend.controller;
 
+import com.trimly.backend.dto.subscription.SubscriptionOrderResponse;
 import com.trimly.backend.dto.subscription.SubscriptionResponse;
 import com.trimly.backend.enums.SubscriptionPlan;
 import com.trimly.backend.security.CustomUserDetails;
@@ -25,6 +26,16 @@ public class SubscriptionController {
     ) {
         return ResponseEntity.ok(
                 subscriptionService.getOrCreateSubscription(shopId, userDetails.getUser().getId()));
+    }
+
+    @PostMapping("/pay")
+    public ResponseEntity<SubscriptionOrderResponse> createPaymentOrder(
+            @PathVariable UUID shopId,
+            @RequestParam SubscriptionPlan plan,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        return ResponseEntity.ok(
+                subscriptionService.createPaymentOrder(shopId, plan, userDetails.getUser().getId()));
     }
 
     @PatchMapping("/upgrade")

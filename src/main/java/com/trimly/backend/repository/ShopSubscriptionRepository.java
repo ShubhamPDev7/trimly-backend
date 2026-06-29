@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface ShopSubscriptionRepository extends JpaRepository<ShopSubscription, UUID> {
 
     Optional<ShopSubscription> findByShopId(UUID shopId);
+
+    Optional<ShopSubscription> findByRazorpayOrderId(String razorpayOrderId);
 }

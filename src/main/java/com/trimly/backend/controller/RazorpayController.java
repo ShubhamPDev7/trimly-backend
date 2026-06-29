@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trimly.backend.dto.razorpay.RazorpayOrderResponse;
 import com.trimly.backend.dto.razorpay.RazorpayWebhookPayload;
 import com.trimly.backend.service.RazorpayService;
+import com.trimly.backend.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,7 @@ import java.util.UUID;
 public class RazorpayController {
 
     private final RazorpayService razorpayService;
+    private final SubscriptionService subscriptionService;
     private final ObjectMapper objectMapper;
 
 
@@ -54,6 +56,13 @@ public class RazorpayController {
             if ("payment.captured".equals(payload.event())) {
                 String orderId   = payload.payload().payment().entity().orderId();
                 String paymentId = payload.payload().payment().entity().id();
+
+                // Try subscription activation first, fall back to bill payment
+                try {
+                    subscriptionService.activateFromPayment(orderId);
+                } catch (Exception e) {
+                    log.debug("Not a subscription payment, trying bill payment.");
+                }
                 razorpayService.handleCapturedPayment(orderId, paymentId);
             } else {
                 log.debug("Ignoring Razorpay event: {}", payload.event());

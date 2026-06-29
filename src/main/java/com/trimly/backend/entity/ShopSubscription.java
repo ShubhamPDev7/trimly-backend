@@ -41,6 +41,12 @@ public class ShopSubscription implements Serializable {
     @Column(name = "razorpay_subscription_id", length = 100)
     private String razorpaySubscriptionId;
 
+    @Column(name = "razorpay_order_id", length = 100)
+    private String razorpayOrderId;
+
+    @Column(name = "pending_plan", length = 20)
+    private String pendingPlan;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
