@@ -22,6 +22,8 @@ import com.trimly.backend.repository.ServiceItemRepository;
 import com.trimly.backend.repository.ShopClosedDateRepository;
 import com.trimly.backend.repository.ShopHoursRepository;
 import com.trimly.backend.repository.ShopRepository;
+import com.trimly.backend.repository.StaffLeaveRepository;
+import com.trimly.backend.repository.StaffShiftRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.trimly.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +64,8 @@ public class BookingService {
     private final ShopRepository shopRepository;
     private final ShopHoursRepository shopHoursRepository;
     private final ShopClosedDateRepository shopClosedDateRepository;
+    private final StaffLeaveRepository staffLeaveRepository;
+    private final StaffShiftRepository staffShiftRepository;
 
     @Transactional
     public BookingResponse createBooking(UUID shopId, BookingRequest request, User currentUser) {
@@ -326,7 +330,19 @@ public class BookingService {
             return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, List.of());
         }
 
+        // Block if staff has a leave for this specific date
+        if (staffLeaveRepository.existsByShopIdAndStaffUserIdAndLeaveDate(shopId, staffId, date)) {
+            return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, List.of());
+        }
+
         int dayOfWeek = date.getDayOfWeek().getValue();
+
+        // Block if staff is marked off on this day of week in their recurring schedule
+        var staffShift = staffShiftRepository.findByShopIdAndStaffUserIdAndDayOfWeek(shopId, staffId, dayOfWeek);
+        if (staffShift.isPresent() && staffShift.get().isOff()) {
+            return new AvailableSlotsResponse(shopId, staffId, date, SLOT_INTERVAL_MINUTES, List.of());
+        }
+
         var hours = shopHoursRepository.findByShopIdAndDayOfWeek(shopId, dayOfWeek)
                 .orElse(null);
 
