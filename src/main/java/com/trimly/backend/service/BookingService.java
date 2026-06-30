@@ -121,6 +121,9 @@ public class BookingService {
         if (slotTaken) {
             throw new IllegalArgumentException("This time slot is already booked for the selected staff member.");
         }
+        if (LocalDateTime.of(request.bookingDate(), request.timeSlot()).isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Cannot create a booking in the past.");
+        }
 
         for (ServiceItem service : services) {
             if (!service.getShopId().equals(shopId)) {
