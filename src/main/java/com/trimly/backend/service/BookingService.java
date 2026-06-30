@@ -202,6 +202,14 @@ public class BookingService {
                     "Cannot transition booking from " + booking.getStatus() + " to " + request.status() + ".");
         }
 
+        if (request.status() == BookingStatus.COMPLETED) {
+            LocalDateTime bookingDateTime = LocalDateTime.of(booking.getBookingDate(), booking.getTimeSlot());
+            if (LocalDateTime.now().isBefore(bookingDateTime)) {
+                throw new IllegalArgumentException(
+                        "Cannot mark a booking as completed before its scheduled time.");
+            }
+        }
+
         booking.setStatus(request.status());
         Booking updatedBooking = bookingRepository.save(booking);
 
@@ -366,9 +374,11 @@ public class BookingService {
         List<LocalTime> available = new ArrayList<>();
         LocalTime cursor = hours.getOpenTime();
         LocalTime closeTime = hours.getCloseTime();
+        boolean isToday = date.equals(LocalDate.now());
+        LocalTime nowTime = LocalTime.now();
 
         while (cursor.isBefore(closeTime)) {
-            if (!takenSlots.contains(cursor)) {
+            if (!takenSlots.contains(cursor) && (!isToday || cursor.isAfter(nowTime))) {
                 available.add(cursor);
             }
             cursor = cursor.plusMinutes(SLOT_INTERVAL_MINUTES);
