@@ -13,4 +13,10 @@ public interface WalkInQueueEntryRepository extends JpaRepository<WalkInQueueEnt
 
     List<WalkInQueueEntry> findByShopIdAndStatusInOrderByJoinedAtAsc(UUID shopId, List<WalkInStatus> statuses);
 
+    org.springframework.data.domain.Page<WalkInQueueEntry> findByShopIdOrderByJoinedAtDesc(
+            UUID shopId, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<WalkInQueueEntry> findByCustomerIdOrderByJoinedAtDesc(
+            UUID customerId, org.springframework.data.domain.Pageable pageable);
+
 }

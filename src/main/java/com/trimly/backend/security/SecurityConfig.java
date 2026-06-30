@@ -71,6 +71,7 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/auth/send-otp").permitAll()
                         .requestMatchers("/api/v1/auth/verify-otp").permitAll()
                         .requestMatchers("/api/v1/shops/*/bookings/available-slots").permitAll()

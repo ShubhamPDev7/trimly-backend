@@ -6,6 +6,7 @@ import com.trimly.backend.dto.booking.AvailableSlotsResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
+import com.trimly.backend.dto.booking.RescheduleRequest;
 import com.trimly.backend.enums.BookingStatus;
 import com.trimly.backend.security.CustomUserDetails;
 import com.trimly.backend.service.BookingService;
@@ -91,6 +92,18 @@ public class BookingController {
     ) {
         BookingResponse response = bookingService.cancelBooking(shopId, bookingId, userDetails.getUser().getId());
         return ResponseEntity.ok(response);
+    }
+
+
+    @PatchMapping("/{bookingId}/reschedule")
+    public ResponseEntity<BookingResponse> rescheduleBooking(
+            @PathVariable UUID shopId,
+            @PathVariable UUID bookingId,
+            @Valid @RequestBody RescheduleRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        return ResponseEntity.ok(
+                bookingService.rescheduleBooking(shopId, bookingId, request, userDetails.getUser().getId()));
     }
 
 }

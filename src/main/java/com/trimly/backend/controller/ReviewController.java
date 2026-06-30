@@ -14,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
 import java.util.UUID;
 
 @RestController
@@ -34,12 +35,12 @@ public class ReviewController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ReviewResponse>> listReviews(
+    public ResponseEntity<Page<ReviewResponse>> listReviews(
             @PathVariable UUID shopId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        List<ReviewResponse> response = reviewService.listReviews(shopId, page, size);
+        Page<ReviewResponse> response = reviewService.listReviews(shopId, page, size);
         return ResponseEntity.ok(response);
     }
 

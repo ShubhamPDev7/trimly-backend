@@ -150,10 +150,10 @@ public class ReviewService {
         return saved;
     }
 
-    public List<ReviewResponse> listReviews(UUID shopId, int page, int size) {
+    public Page<ReviewResponse> listReviews(UUID shopId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<Review> reviews = reviewRepository.findByShopId(shopId, pageable);
-        return reviews.stream().map(this::toResponse).collect(Collectors.toList());
+        return reviews.map(this::toResponse);
     }
 
     public ShopRatingSummaryResponse getRatingSummary(UUID shopId) {

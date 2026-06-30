@@ -6,6 +6,7 @@ import com.trimly.backend.dto.booking.AvailableSlotsResponse;
 import com.trimly.backend.dto.booking.BookingRequest;
 import com.trimly.backend.dto.booking.BookingResponse;
 import com.trimly.backend.dto.booking.BookingStatusUpdateRequest;
+import com.trimly.backend.dto.booking.RescheduleRequest;
 import com.trimly.backend.entity.Bill;
 import com.trimly.backend.entity.Booking;
 import com.trimly.backend.entity.BookingServiceItem;
@@ -435,6 +436,71 @@ public class BookingService {
                     shop.getName(), updated.getBookingDate(), updated.getTimeSlot());
         } catch (Exception e) {
             log.error("Failed to send cancellation emails: {}", e.getMessage());
+        }
+
+        return bookingMapper.toResponse(updated);
+    }
+
+
+    @Transactional
+    public BookingResponse rescheduleBooking(UUID shopId, UUID bookingId, RescheduleRequest request, UUID currentUserId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found."));
+
+        if (!booking.getShopId().equals(shopId)) {
+            throw new ResourceNotFoundException("Booking not found.");
+        }
+
+        if (!booking.getCustomerId().equals(currentUserId)) {
+            throw new IllegalArgumentException("You can only reschedule your own bookings.");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.ACCEPTED) {
+            throw new IllegalArgumentException("Only pending or accepted bookings can be rescheduled.");
+        }
+
+        // Enforce cancellation policy window on the original slot
+        cancellationPolicyRepository.findByShopId(shopId).ifPresent(policy -> {
+            LocalDateTime appointmentDateTime = LocalDateTime.of(booking.getBookingDate(), booking.getTimeSlot());
+            LocalDateTime cutoff = appointmentDateTime.minusHours(policy.getMinHoursBeforeCancel());
+            if (LocalDateTime.now().isAfter(cutoff)) {
+                throw new IllegalArgumentException(
+                        "Reschedule not allowed within " + policy.getMinHoursBeforeCancel() + " hour(s) of the appointment.");
+            }
+        });
+
+        // Check new slot is free
+        boolean slotTaken = bookingRepository.findByStaffIdAndBookingDate(booking.getStaffId(), request.newDate())
+                .stream()
+                .anyMatch(b -> b.getTimeSlot().equals(request.newTimeSlot())
+                        && !b.getId().equals(bookingId)
+                        && b.getStatus() != BookingStatus.REJECTED
+                        && b.getStatus() != BookingStatus.CANCELLED);
+
+        if (slotTaken) {
+            throw new IllegalArgumentException("The requested time slot is already booked.");
+        }
+
+        // Audit old slot
+        booking.setRescheduledFromDate(booking.getBookingDate());
+        booking.setRescheduledFromSlot(booking.getTimeSlot());
+
+        booking.setBookingDate(request.newDate());
+        booking.setTimeSlot(request.newTimeSlot());
+        booking.setStatus(BookingStatus.PENDING);
+        booking.setReminderSent(false);
+
+        Booking updated = bookingRepository.save(booking);
+
+        // Notify customer
+        if (updated.getCustomerId() != null) {
+            try {
+                String shopName = shopRepository.findById(shopId).map(s -> s.getName()).orElse("the shop");
+                fcmService.sendToUser(updated.getCustomerId(), "Booking Rescheduled",
+                        "Your booking at " + shopName + " has been moved to " + request.newDate() + " at " + request.newTimeSlot() + ".");
+            } catch (Exception e) {
+                log.error("Failed to send reschedule notification: {}", e.getMessage());
+            }
         }
 
         return bookingMapper.toResponse(updated);

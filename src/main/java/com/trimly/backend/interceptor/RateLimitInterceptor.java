@@ -42,6 +42,10 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 key = "rate:register:" + ip;
                 maxRequests = 5;
                 window = Duration.ofHours(1);
+            } else if (uri.endsWith("/api/v1/auth/send-otp")) {
+                key = "rate:send-otp:" + ip;
+                maxRequests = 5;
+                window = Duration.ofMinutes(15);
             } else if (uri.endsWith("/walk-in-queue")) {
                 key = "rate:walk-in-queue:" + ip;
                 maxRequests = 20;

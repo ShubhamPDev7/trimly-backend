@@ -590,4 +590,19 @@ public class WalkInQueueService {
                 bill.getRazorpayPaymentId()
         );
     }
+
+    public org.springframework.data.domain.Page<WalkInQueueEntryResponse> getQueueHistory(
+            UUID shopId, UUID currentUserId, int page, int size) {
+        shopAccessService.verifyShopAccess(currentUserId, shopId);
+        var pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return walkInQueueEntryRepository.findByShopIdOrderByJoinedAtDesc(shopId, pageable)
+                .map(entry -> toResponse(entry, null, null));
+    }
+
+    public org.springframework.data.domain.Page<WalkInQueueEntryResponse> getMyQueueHistory(
+            UUID customerId, int page, int size) {
+        var pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return walkInQueueEntryRepository.findByCustomerIdOrderByJoinedAtDesc(customerId, pageable)
+                .map(entry -> toResponse(entry, null, null));
+    }
 }

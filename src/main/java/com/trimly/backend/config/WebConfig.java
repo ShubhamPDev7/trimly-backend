@@ -18,7 +18,9 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/v1/auth/login",
                         "/api/v1/auth/forgot-password",
                         "/api/v1/auth/register",
-                        "/api/v1/shops/*/walk-in-queue");
+                        "/api/v1/shops/*/walk-in-queue",
+                        "/api/v1/auth/send-otp",
+                        "/api/v1/auth/verify-otp");
     }
 
 }

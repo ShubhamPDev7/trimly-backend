@@ -15,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
 import java.util.UUID;
 
 @RestController
@@ -94,6 +95,18 @@ public class WalkInQueueController {
     ) {
         BillResponse response = walkInQueueService.createWalkInBill(shopId, entryId, request, userDetails.getUser().getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+
+    @GetMapping("/history")
+    public ResponseEntity<Page<WalkInQueueEntryResponse>> getQueueHistory(
+            @PathVariable UUID shopId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        return ResponseEntity.ok(
+                walkInQueueService.getQueueHistory(shopId, userDetails.getUser().getId(), page, size));
     }
 
 }

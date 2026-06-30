@@ -23,6 +23,7 @@ import org.springframework.data.domain.Page;
 public class CustomerBookingController {
 
     private final CustomerService customerService;
+    private final com.trimly.backend.service.WalkInQueueService walkInQueueService;
 
     @GetMapping("/bookings")
     public ResponseEntity<Page<BookingResponse>> getMyBookings(
@@ -64,5 +65,15 @@ public class CustomerBookingController {
     ) {
         customerService.deleteMyAccount(userDetails.getUser());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/walk-in-history")
+    public ResponseEntity<Page<com.trimly.backend.dto.walkin.WalkInQueueEntryResponse>> getMyWalkInHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        return ResponseEntity.ok(
+                walkInQueueService.getMyQueueHistory(userDetails.getUser().getId(), page, size));
     }
 }

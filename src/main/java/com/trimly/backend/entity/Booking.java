@@ -61,6 +61,12 @@ public class Booking implements Serializable {
     @Builder.Default
     private boolean reminderSent = false;
 
+    @Column(name = "rescheduled_from_date")
+    private java.time.LocalDate rescheduledFromDate;
+
+    @Column(name = "rescheduled_from_slot")
+    private java.time.LocalTime rescheduledFromSlot;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
