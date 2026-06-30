@@ -44,10 +44,10 @@ public class RazorpayController {
         }
 
 
-//        if (!razorpayService.isValidSignature(rawBody, signature)) {
-//            log.warn("Razorpay webhook signature invalid — rejecting.");
-//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-//        }
+        if (!razorpayService.isValidSignature(rawBody, signature)) {
+            log.warn("Razorpay webhook signature invalid — rejecting.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
         try {
             RazorpayWebhookPayload payload = objectMapper.readValue(rawBody, RazorpayWebhookPayload.class);
@@ -57,7 +57,7 @@ public class RazorpayController {
                 String orderId   = payload.payload().payment().entity().orderId();
                 String paymentId = payload.payload().payment().entity().id();
 
-                // Try subscription activation first, fall back to bill payment
+
                 try {
                     subscriptionService.activateFromPayment(orderId);
                 } catch (Exception e) {

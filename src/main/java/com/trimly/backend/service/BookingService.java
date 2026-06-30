@@ -400,7 +400,10 @@ public class BookingService {
             throw new ResourceNotFoundException("Booking not found.");
         }
 
-        if (!booking.getCustomerId().equals(currentUserId)) {
+        boolean isOwnerOrStaff = shopAccessService.hasShopAccess(currentUserId, shopId);
+        boolean isOwningCustomer = booking.getCustomerId() != null && booking.getCustomerId().equals(currentUserId);
+
+        if (!isOwningCustomer && !isOwnerOrStaff) {
             throw new IllegalArgumentException("You can only cancel your own bookings.");
         }
 
@@ -408,32 +411,43 @@ public class BookingService {
             throw new IllegalArgumentException("Only pending or accepted bookings can be cancelled.");
         }
 
-        // Enforce cancellation policy if set
-        cancellationPolicyRepository.findByShopId(shopId).ifPresent(policy -> {
-            LocalDateTime appointmentDateTime = LocalDateTime.of(booking.getBookingDate(), booking.getTimeSlot());
-            LocalDateTime cutoff = appointmentDateTime.minusHours(policy.getMinHoursBeforeCancel());
-            if (LocalDateTime.now().isAfter(cutoff)) {
-                throw new IllegalArgumentException(
-                        "Cancellation not allowed. Must cancel at least " +
-                                policy.getMinHoursBeforeCancel() + " hour(s) before the appointment.");
-            }
-        });
+        // Enforce cancellation policy if set (skip for owner/staff-initiated cancellations)
+        if (!isOwnerOrStaff) {
+            cancellationPolicyRepository.findByShopId(shopId).ifPresent(policy -> {
+                LocalDateTime appointmentDateTime = LocalDateTime.of(booking.getBookingDate(), booking.getTimeSlot());
+                LocalDateTime cutoff = appointmentDateTime.minusHours(policy.getMinHoursBeforeCancel());
+                if (LocalDateTime.now().isAfter(cutoff)) {
+                    throw new IllegalArgumentException(
+                            "Cancellation not allowed. Must cancel at least " +
+                                    policy.getMinHoursBeforeCancel() + " hour(s) before the appointment.");
+                }
+            });
+        }
 
         booking.setStatus(BookingStatus.CANCELLED);
         Booking updated = bookingRepository.save(booking);
 
-
         try {
-            User customer = userRepository.findById(currentUserId).orElseThrow();
             var shop = shopRepository.findById(shopId).orElseThrow();
-            fcmService.sendToUser(booking.getCustomerId(), "Booking Cancelled", "Your booking has been cancelled.");
-            emailService.sendBookingCancelledToCustomer(
-                    customer.getEmail(), customer.getName(), shop.getName(),
-                    updated.getBookingDate(), updated.getTimeSlot());
-            User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
-            emailService.sendBookingCancelledToOwner(
-                    owner.getEmail(), owner.getName(), customer.getName(),
-                    shop.getName(), updated.getBookingDate(), updated.getTimeSlot());
+
+            if (updated.getCustomerId() != null) {
+                User customer = userRepository.findById(updated.getCustomerId()).orElseThrow();
+                fcmService.sendToUser(updated.getCustomerId(), "Booking Cancelled", "Your booking has been cancelled.");
+                emailService.sendBookingCancelledToCustomer(
+                        customer.getEmail(), customer.getName(), shop.getName(),
+                        updated.getBookingDate(), updated.getTimeSlot());
+
+                User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+                emailService.sendBookingCancelledToOwner(
+                        owner.getEmail(), owner.getName(), customer.getName(),
+                        shop.getName(), updated.getBookingDate(), updated.getTimeSlot());
+            } else {
+                // Guest booking — notify owner only, using guest name
+                User owner = userRepository.findById(shop.getOwnerId()).orElseThrow();
+                emailService.sendBookingCancelledToOwner(
+                        owner.getEmail(), owner.getName(), updated.getGuestName(),
+                        shop.getName(), updated.getBookingDate(), updated.getTimeSlot());
+            }
         } catch (Exception e) {
             log.error("Failed to send cancellation emails: {}", e.getMessage());
         }
@@ -451,7 +465,7 @@ public class BookingService {
             throw new ResourceNotFoundException("Booking not found.");
         }
 
-        if (!booking.getCustomerId().equals(currentUserId)) {
+        if (booking.getCustomerId() == null || !booking.getCustomerId().equals(currentUserId)) {
             throw new IllegalArgumentException("You can only reschedule your own bookings.");
         }
 

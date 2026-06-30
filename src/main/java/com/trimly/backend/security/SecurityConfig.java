@@ -79,7 +79,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/shops/*/hours").permitAll()
                         .requestMatchers("/api/v1/shops/*/reviews").permitAll()
                         .requestMatchers("/api/v1/shops/*/reviews/summary").permitAll()
-                        .requestMatchers("/api/v1/shops/*/cancellation-policy").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/shops/*/cancellation-policy").permitAll()
                         .requestMatchers("/api/v1/shops/*/booking-summary").permitAll()
                         .requestMatchers("/api/v1/razorpay/webhook").permitAll()
                         .requestMatchers("/api/v1/shops/search").permitAll()
