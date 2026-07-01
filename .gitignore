@@ -13,3 +13,6 @@
 /httpRequests/
 
 src/main/resources/application.properties
+
+firebase-service-account.json
+*firebase-adminsdk*.json

@@ -149,6 +149,8 @@ public class WalkInQueueService {
             emailService.sendWalkInOwnerNotification(
                     owner.getEmail(), owner.getName(), shop.getName(),
                     customerDisplayName, position, waitMinutes, serviceNames);
+            fcmService.sendToUser(owner.getId(), "New Walk-in",
+                    customerDisplayName + " joined the queue for " + serviceNames + " (position " + position + ").");
         } catch (Exception e) {
             log.error("Failed to send walk-in owner notification: {}", e.getMessage());
         }

@@ -181,6 +181,8 @@ public class BookingService {
                 emailService.sendNewBookingToOwner(
                         owner.getEmail(), owner.getName(), customer.getName(),
                         shop.getName(), request.bookingDate(), request.timeSlot(), serviceNames);
+                fcmService.sendToUser(owner.getId(), "New Booking",
+                        customer.getName() + " booked " + serviceNames + " for " + request.bookingDate() + " " + request.timeSlot() + ".");
             } catch (Exception e) {
                 log.error("Failed to send new booking notification to owner: {}", e.getMessage());
             }
